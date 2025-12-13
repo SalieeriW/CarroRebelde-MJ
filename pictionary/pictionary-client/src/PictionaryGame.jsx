@@ -3,9 +3,11 @@ import './styles/pictionary.css';
 
 const SERVER_URL = 'http://localhost:2234';
 
+// Colores disponibles
 const PALETTE_COLORS = ['#ffffff', '#f9d71c', '#e94560', '#00ffcc', '#3498db', '#2ecc71', '#9b59b6', '#e67e22'];
 
 function PictionaryGame() {
+  // --- ESTADOS ---
   const searchParams = new URLSearchParams(window.location.search);
   const urlSessionId = searchParams.get('sessionId');
   const urlRole = searchParams.get('role');
@@ -14,9 +16,7 @@ function PictionaryGame() {
   const [sessionId] = useState(urlSessionId || Math.random().toString(36).substring(7));
   const [role, setRole] = useState(null);
   const [word, setWord] = useState('');
-  
-  // --- NUEVO: ESTADO PARA LONGITUD DE PALABRA ---
-  const [wordLength, setWordLength] = useState(0); 
+  const [wordLength, setWordLength] = useState(0); // Longitud de la palabra
   
   const [guess, setGuess] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
@@ -27,14 +27,15 @@ function PictionaryGame() {
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
-  
-  // Referencia para el input invisible
   const inputRef = useRef(null);
 
+  // --- EFECTOS ---
+
+  // Tecla F10
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F10') {
-        e.preventDefault();
+        e.preventDefault(); 
         setShowHelp(prev => !prev);
       }
     };
@@ -42,11 +43,13 @@ function PictionaryGame() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Inicializar rol
   useEffect(() => {
     if (urlRole === 'drawer') initDrawer();
     else if (urlRole === 'guesser') initGuesser();
   }, []);
 
+  // Fondo del canvas
   useEffect(() => {
     if (role && canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
@@ -54,6 +57,8 @@ function PictionaryGame() {
         ctx.fillRect(0, 0, 800, 600);
     }
   }, [role]);
+
+  // --- LOGICA DEL JUEGO ---
 
   const initDrawer = async () => {
     setRole('drawer');
@@ -71,8 +76,7 @@ function PictionaryGame() {
         const res = await fetch(`${SERVER_URL}/api/pictionary/canvas/${sessionId}`);
         const data = await res.json();
         
-        // --- NUEVO: CAPTURAR LONGITUD ---
-        // Asegúrate de que tu servidor envíe "wordLength" en este JSON
+        // Capturar longitud para limitar el input
         if (data.wordLength && wordLength === 0) {
             setWordLength(data.wordLength);
         }
@@ -100,7 +104,7 @@ function PictionaryGame() {
 
   const handleWin = () => {
       setIsWon(true);
-      setStatusMsg(">> MISIÓN COMPLETADA <<");
+      setStatusMsg("*** MISION COMPLETADA ***");
       if (returnUrl) setTimeout(() => { window.location.href = returnUrl; }, 3000);
   };
 
@@ -118,6 +122,7 @@ function PictionaryGame() {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
     ctx.beginPath();
     ctx.moveTo(lastPos.current.x, lastPos.current.y);
     ctx.lineTo(x, y);
@@ -125,6 +130,7 @@ function PictionaryGame() {
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.stroke();
+
     lastPos.current = { x, y };
   };
 
@@ -159,19 +165,21 @@ function PictionaryGame() {
     
     if (data.correct) {
       handleWin();
-      setStatusMsg(`>> CORRECTO: ${data.word.toUpperCase()} <<`);
+      setStatusMsg(`[ CORRECTO: ${data.word.toUpperCase()} ]`);
     } else {
-      setStatusMsg("[ ERROR: INTÉNTALO DE NUEVO ]");
-      setGuess(''); // Limpiamos al fallar
+      setStatusMsg("[ ERROR: INTENTALO DE NUEVO ]");
+      setGuess('');
       setTimeout(() => setStatusMsg(""), 2000);
     }
   };
 
-  // --- NUEVA LÓGICA DE INPUT INVISIBLE ---
+  // --- AQUI ESTA EL CAMBIO PRINCIPAL ---
   const handleInputChange = (e) => {
       const val = e.target.value.toUpperCase();
-      // Solo permitimos escribir hasta el largo de la palabra (si lo tenemos)
-      if (wordLength > 0 && val.length > wordLength) return;
+      // Si sabemos el largo, impedimos escribir mas caracteres
+      if (wordLength > 0 && val.length > wordLength) {
+          return;
+      }
       setGuess(val);
   };
 
@@ -179,37 +187,54 @@ function PictionaryGame() {
       if (inputRef.current && !isWon) inputRef.current.focus();
   };
 
+  // --- MODAL DE AYUDA ---
   const HelpModal = () => (
     <div className="retro-modal-overlay" onClick={() => setShowHelp(false)}>
       <div className="retro-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"> SISTEMA DE AYUDA (F10) </div>
+        <div className="modal-header">== AYUDA DEL SISTEMA ==</div>
         <div className="modal-content">
-           <p className="highlight">INSTRUCCIONES</p>
-           <ul className="retro-list">
-            <li>DIBUJANTE: Usa colores, no letras.</li>
-            <li>ADIVINADOR: Completa los huecos _ _ _ _</li>
-           </ul>
+          <p>TECLA [F10] : MENU</p>
+          <br/>
+          <p className="highlight">ROL: DIBUJANTE</p>
+          <ul className="retro-list">
+            <li>Dibuja la palabra objetivo.</li>
+            <li>No escribas letras.</li>
+          </ul>
+          <br/>
+          <p className="highlight">ROL: ADIVINADOR</p>
+          <ul className="retro-list">
+            <li>Mira la pantalla.</li>
+            <li>Escribe la palabra y pulsa ENTER.</li>
+          </ul>
         </div>
-        <button className="retro-btn secondary full-width" onClick={() => setShowHelp(false)}>[ CERRAR ]</button>
+        <button className="retro-btn secondary full-width" onClick={() => setShowHelp(false)}>
+          [ CERRAR ]
+        </button>
       </div>
     </div>
   );
+
+  // --- RENDERIZADO ---
 
   if (!role) {
     return (
       <div className="retro-game">
         {showHelp && <HelpModal />}
-        <div className="retro-header"><h1 className="retro-title">PICTIONARY.EXE</h1></div>
+        <div className="retro-header">
+            <h1 className="retro-title">PICTIONARY.EXE</h1>
+        </div>
         <div className="retro-card">
-            <p className="label">ID DE SESIÓN:</p>
+            <p className="label">ID DE SESION:</p>
             <div className="retro-id-box">{sessionId}</div>
-            <code className="retro-code">{window.location.origin}?sessionId={sessionId}</code>
+            <code className="retro-code">
+                {window.location.origin}?sessionId={sessionId}
+            </code>
         </div>
         <div className="retro-controls">
             <button className="retro-btn" onClick={initDrawer}>[ INICIAR DIBUJO ]</button>
             <button className="retro-btn secondary" onClick={initGuesser}>[ INICIAR ADIVINANZA ]</button>
         </div>
-        <div className="footer-hint">PRESS [F10] FOR HELP SYSTEM</div>
+        <div className="footer-hint">PRESIONA [F10] PARA AYUDA</div>
       </div>
     );
   }
@@ -219,10 +244,16 @@ function PictionaryGame() {
       {showHelp && <HelpModal />}
       
       <div className="retro-header">
-        <h2 className="retro-title">{role === 'drawer' ? 'MODE: DIBUJANTE' : 'MODE: ADIVINADOR'}</h2>
+        <h2 className="retro-title">
+            {role === 'drawer' ? 'MODO: DIBUJANTE' : 'MODO: ADIVINADOR'}
+        </h2>
+        
         {role === 'drawer' && (
-            <div className="retro-word-box">OBJETIVO: <span className="highlight">{word.toUpperCase()}</span></div>
+            <div className="retro-word-box">
+                OBJETIVO: <span className="highlight">{word.toUpperCase()}</span>
+            </div>
         )}
+        
         {isWon && <div className="retro-win-msg">{statusMsg}</div>}
         {!isWon && statusMsg && <div className="retro-status">{statusMsg}</div>}
       </div>
@@ -230,14 +261,21 @@ function PictionaryGame() {
       {role === 'drawer' && !isWon && (
         <div className="retro-palette-container">
             {PALETTE_COLORS.map(color => (
-                <button key={color} className={`palette-swatch ${currentColor === color ? 'active' : ''}`}
-                    style={{ backgroundColor: color }} onClick={() => setCurrentColor(color)} />
+                <button
+                    key={color}
+                    className={`palette-swatch ${currentColor === color ? 'active' : ''}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setCurrentColor(color)}
+                />
             ))}
         </div>
       )}
 
       <div className="retro-canvas-container">
-          <canvas ref={canvasRef} width={800} height={600}
+          <canvas
+            ref={canvasRef}
+            width={800}
+            height={600}
             onMouseDown={role === 'drawer' ? startDrawing : undefined}
             onMouseMove={role === 'drawer' ? draw : undefined}
             onMouseUp={role === 'drawer' ? stopDrawing : undefined}
@@ -250,12 +288,10 @@ function PictionaryGame() {
            <button className="retro-btn danger" onClick={clearCanvas}>[ BORRAR PANTALLA ]</button>
         )}
 
-        {/* --- NUEVO UI PARA ADIVINAR (SLOTS) --- */}
         {role === 'guesser' && !isWon && (
           <div className="guesser-container">
-            {/* Visualización de Rayitas */}
+            {/* Visualización de huecos tipo Ahorcado */}
             <div className="word-slots" onClick={focusInput}>
-                {/* Si no tenemos length, mostramos al menos 1 slot para que pueda escribir algo */}
                 {Array.from({ length: wordLength || Math.max(guess.length + 1, 6) }).map((_, i) => (
                     <div key={i} className={`slot ${guess[i] ? 'filled' : ''}`}>
                         {guess[i] || '_'}
@@ -263,7 +299,7 @@ function PictionaryGame() {
                 ))}
             </div>
             
-            {/* Input Invisible pero funcional */}
+            {/* Input Invisible */}
             <input 
               ref={inputRef}
               className="ghost-input"
@@ -273,13 +309,14 @@ function PictionaryGame() {
               onChange={handleInputChange}
               onKeyPress={(e) => e.key === 'Enter' && submitGuess()}
               autoComplete="off"
+              maxLength={wordLength} 
             />
             
             <button className="retro-btn" onClick={submitGuess}>[ ENTER ]</button>
           </div>
         )}
       </div>
-      <div className="footer-hint">PRESS [F10] FOR HELP SYSTEM</div>
+      <div className="footer-hint">PRESIONA [F10] PARA AYUDA</div>
     </div>
   );
 }
