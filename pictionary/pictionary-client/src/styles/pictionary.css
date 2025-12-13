@@ -1,56 +1,167 @@
-body {
-  background-color: #222;
-  color: white;
-  font-family: 'Courier New', Courier, monospace;
-  margin: 0;
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* --- LAYOUT PRINCIPAL --- */
+.retro-game {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #16213e;
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  font-family: 'Press Start 2P', cursive;
+  color: white;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
-.container {
+.retro-header {
   text-align: center;
-  margin-top: 20px;
+  margin-bottom: 20px;
   width: 100%;
   max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.retro-title {
+  font-size: 24px;
+  color: #f9d71c; /* Amarillo Arcade */
+  text-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+  margin: 0 0 15px 0;
+  line-height: 1.5;
+}
+
+/* --- ESTADOS DEL JUEGO --- */
+.retro-word-box {
+    background: #0f3460;
+    padding: 10px 20px;
+    border: 2px solid #e94560;
+    font-size: 14px;
+    margin-bottom: 10px;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+}
+
+.retro-status {
+  font-size: 12px;
+  color: #e94560; /* Rojo Alerta */
+  margin-top: 10px;
+  animation: blink 1s infinite;
+}
+
+.retro-win-msg {
+    color: #00ff00;
+    font-size: 16px;
+    margin-top: 10px;
+    text-shadow: 2px 2px 0 #000;
+}
+
+/* --- CANVAS --- */
+.retro-canvas-container {
+  border: 4px solid #ffffff;
+  background: #16213e; /* Coincide con el fillRect del JS */
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
+  cursor: crosshair;
+  margin: 10px 0;
+  /* Para que sea responsive */
+  max-width: 100%;
+  overflow: hidden; 
 }
 
 canvas {
-  background-color: #16213e; /* Azul oscuro pizarra */
-  border: 4px solid #f1c40f;
-  border-radius: 4px;
-  cursor: crosshair;
-  touch-action: none;
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
-.controls {
-  margin: 10px 0;
+/* --- CONTROLES Y INPUTS --- */
+.retro-controls {
+  margin-top: 20px;
   display: flex;
-  gap: 10px;
+  gap: 15px;
+  width: 100%;
+  max-width: 800px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
-button {
-  padding: 10px 20px;
-  font-size: 16px;
+.retro-input {
+  background: #0f3460;
+  border: 4px solid #ffffff;
+  color: white;
+  padding: 15px;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 14px;
+  text-transform: uppercase;
+  outline: none;
+  flex-grow: 1;
+  max-width: 400px;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+}
+
+.retro-input:focus {
+  border-color: #f9d71c;
+}
+
+.retro-btn {
+  background: #f9d71c;
+  border: 4px solid #ffffff;
+  color: #16213e;
+  padding: 15px 25px;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 14px;
   cursor: pointer;
-  background: #f1c40f;
-  border: none;
-  font-weight: bold;
+  text-transform: uppercase;
+  box-shadow: 6px 6px 0 rgba(0,0,0,0.5);
+  transition: transform 0.1s;
 }
 
-input {
-  padding: 10px;
-  font-size: 16px;
+.retro-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 rgba(0,0,0,0.5);
 }
 
-.word-display {
-  font-size: 2em;
-  color: #f1c40f;
-  letter-spacing: 5px;
-  margin: 10px;
+.retro-btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0px 0px 0 rgba(0,0,0,0.5);
 }
 
-.status {
-  margin: 10px;
-  font-size: 1.2em;
+.retro-btn.secondary {
+  background: #e94560; /* Rojo para acciones destructivas o secundarias */
+  color: white;
+}
+
+/* --- TARJETA DE MENÚ (Nueva) --- */
+.retro-card {
+    background: #2a2a2a;
+    padding: 30px;
+    border: 4px solid #555;
+    text-align: center;
+    box-shadow: 8px 8px 0 #000;
+    margin-bottom: 20px;
+    max-width: 90%;
+}
+
+.retro-id-box {
+    font-size: 20px;
+    color: #f9d71c;
+    letter-spacing: 2px;
+    margin: 10px 0;
+}
+
+.retro-code {
+    display: block;
+    background: #000;
+    padding: 10px;
+    color: #00ff00;
+    font-size: 10px;
+    word-break: break-all;
+    margin-top: 5px;
+    border: 1px dashed #444;
+}
+
+/* Animación simple */
+@keyframes blink {
+    50% { opacity: 0; }
 }

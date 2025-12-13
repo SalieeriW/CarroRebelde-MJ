@@ -1,28 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import './styles/pictionary.css';
+import './styles/pictionary.css'; 
 
 const SERVER_URL = 'http://localhost:2234';
 
 function PictionaryGame() {
-  // 1. Gestionar SessionID desde URL
-  const [sessionId] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('sessionId') || Math.random().toString(36).substring(7);
-  });
+  const searchParams = new URLSearchParams(window.location.search);
+  const urlSessionId = searchParams.get('sessionId');
+  const urlRole = searchParams.get('role');
+  const returnUrl = searchParams.get('returnUrl');
 
-  const [role, setRole] = useState(null); // 'drawer' | 'guesser'
+  const [sessionId] = useState(urlSessionId || Math.random().toString(36).substring(7));
+  const [role, setRole] = useState(null);
   const [word, setWord] = useState('');
   const [guess, setGuess] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [isWon, setIsWon] = useState(false);
 
-  // Referencias Canvas
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
 
-  // --- LÓGICA DEL DRAWER ---
-  
+  useEffect(() => {
+    if (urlRole === 'drawer') initDrawer();
+    else if (urlRole === 'guesser') initGuesser();
+  }, []);
+
   const initDrawer = async () => {
     setRole('drawer');
     try {
@@ -34,14 +36,49 @@ function PictionaryGame() {
     }
   };
 
+  const initGuesser = () => {
+    setRole('guesser');
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${SERVER_URL}/api/pictionary/canvas/${sessionId}`);
+        const data = await res.json();
+        
+        if (data.solved) {
+            handleWin();
+            clearInterval(interval);
+            return;
+        }
+        if (data.canvasData) {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = canvasRef.current;
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+            }
+          };
+          img.src = data.canvasData;
+        }
+      } catch (e) {
+        console.error("Polling error", e);
+      }
+    }, 1000); 
+    return () => clearInterval(interval);
+  };
+
+  const handleWin = () => {
+      setIsWon(true);
+      setStatusMsg("¡VICTORIA! 🎉");
+      if (returnUrl) {
+          setTimeout(() => { window.location.href = returnUrl; }, 3000);
+      }
+  };
+
   const startDrawing = (e) => {
     isDrawing.current = true;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    lastPos.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
+    lastPos.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
   const draw = (e) => {
@@ -66,11 +103,8 @@ function PictionaryGame() {
   const stopDrawing = async () => {
     if (!isDrawing.current) return;
     isDrawing.current = false;
-    
-    // Enviar al servidor
     const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL(); // Convertir a Base64
-    
+    const dataUrl = canvas.toDataURL(); 
     await fetch(`${SERVER_URL}/api/pictionary/draw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,42 +117,7 @@ function PictionaryGame() {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#16213e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    stopDrawing(); // Enviar borrado al servidor
-  };
-
-  // --- LÓGICA DEL GUESSER ---
-
-  const initGuesser = () => {
-    setRole('guesser');
-    // Iniciar Polling
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`${SERVER_URL}/api/pictionary/canvas/${sessionId}`);
-        const data = await res.json();
-        
-        if (data.solved) {
-            setIsWon(true);
-            setStatusMsg("¡ALGUIEN ACERTÓ!");
-            clearInterval(interval);
-        }
-
-        if (data.canvasData) {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = canvasRef.current;
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-            }
-          };
-          img.src = data.canvasData;
-        }
-      } catch (e) {
-        console.error("Polling error", e);
-      }
-    }, 1000); // Actualiza cada 1 segundo
-
-    return () => clearInterval(interval);
+    stopDrawing(); 
   };
 
   const submitGuess = async () => {
@@ -131,16 +130,15 @@ function PictionaryGame() {
     const data = await res.json();
     
     if (data.correct) {
-      setIsWon(true);
-      setStatusMsg(`¡CORRECTO! La palabra era ${data.word.toUpperCase()}`);
+      handleWin();
+      setStatusMsg(`¡CORRECTO! ERA ${data.word.toUpperCase()}`);
     } else {
-      setStatusMsg("Incorrecto, sigue intentando...");
+      setStatusMsg("INCORRECTO, SIGUE INTENTANDO...");
       setTimeout(() => setStatusMsg(""), 2000);
     }
     setGuess('');
   };
 
-  // Inicializar Canvas (fondo)
   useEffect(() => {
     if (role && canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
@@ -149,62 +147,81 @@ function PictionaryGame() {
     }
   }, [role]);
 
-  // --- RENDER ---
-
+  // --- RENDERIZADO: MENÚ INICIAL ---
   if (!role) {
     return (
-      <div className="container">
-        <h1>🎨 PICTIONARY</h1>
-        <p>ID de Sesión: <strong>{sessionId}</strong></p>
-        <div className="controls">
-          <button onClick={initDrawer}>🖌️ DIBUJAR</button>
-          <button onClick={initGuesser}>🤔 ADIVINAR</button>
+      <div className="retro-game">
+        <div className="retro-header">
+            <h1 className="retro-title">🎨 PICTIONARY DEV</h1>
         </div>
-        <p>Comparte esta URL con tu compañero:</p>
-        <code style={{background: '#333', padding: '5px'}}>
-          {window.location.href.split('?')[0]}?sessionId={sessionId}
-        </code>
+        
+        {/* Tarjeta de información */}
+        <div className="retro-card">
+            <p style={{marginBottom:'10px'}}>SALA ID:</p>
+            <div className="retro-id-box">{sessionId}</div>
+            
+            <p style={{marginTop:'20px', fontSize:'10px', color:'#aaa'}}>COMPARTE ESTA URL:</p>
+            <code className="retro-code">
+                {window.location.origin}?sessionId={sessionId}
+            </code>
+        </div>
+
+        <div className="retro-controls">
+            <button className="retro-btn" onClick={initDrawer}>🖌️ DIBUJAR</button>
+            <button className="retro-btn secondary" onClick={initGuesser}>🤔 ADIVINAR</button>
+        </div>
       </div>
     );
   }
 
+  // --- RENDERIZADO: JUEGO ACTIVO ---
   return (
-    <div className="container">
-      <div className="header">
-        <h2>Role: {role === 'drawer' ? '🖌️ DIBUJANTE' : '🤔 ADIVINADOR'}</h2>
-        {role === 'drawer' && <div className="word-display">DIBUJA: {word.toUpperCase()}</div>}
-        {isWon && <div style={{color: '#2ecc71', fontSize: '24px'}}>🎉 {statusMsg} 🎉</div>}
+    <div className="retro-game">
+      <div className="retro-header">
+        <h2 className="retro-title">{role === 'drawer' ? '🖌️ DIBUJANTE' : '🤔 ADIVINADOR'}</h2>
+        
+        {role === 'drawer' && (
+            <div className="retro-word-box">
+                OBJETIVO: <span style={{color: '#f9d71c'}}>{word.toUpperCase()}</span>
+            </div>
+        )}
+        
+        {isWon && <div className="retro-win-msg">🎉 {statusMsg} 🎉</div>}
+        {!isWon && statusMsg && <div className="retro-status">{statusMsg}</div>}
       </div>
 
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={600}
-        onMouseDown={role === 'drawer' ? startDrawing : undefined}
-        onMouseMove={role === 'drawer' ? draw : undefined}
-        onMouseUp={role === 'drawer' ? stopDrawing : undefined}
-        onMouseLeave={role === 'drawer' ? stopDrawing : undefined}
-      />
+      {/* Contenedor para el borde blanco del canvas */}
+      <div className="retro-canvas-container">
+          <canvas
+            ref={canvasRef}
+            width={800}
+            height={600}
+            onMouseDown={role === 'drawer' ? startDrawing : undefined}
+            onMouseMove={role === 'drawer' ? draw : undefined}
+            onMouseUp={role === 'drawer' ? stopDrawing : undefined}
+            onMouseLeave={role === 'drawer' ? stopDrawing : undefined}
+          />
+      </div>
 
-      <div className="controls">
+      <div className="retro-controls">
         {role === 'drawer' && (
-           <button onClick={clearCanvas}>BORRAR TODO</button>
+           <button className="retro-btn secondary" onClick={clearCanvas}>🗑️ BORRAR TODO</button>
         )}
 
         {role === 'guesser' && !isWon && (
           <>
             <input 
+              className="retro-input"
               type="text" 
               value={guess} 
               onChange={(e) => setGuess(e.target.value)}
-              placeholder="¿Qué es esto?"
+              placeholder="¿QUÉ ES?"
               onKeyPress={(e) => e.key === 'Enter' && submitGuess()}
             />
-            <button onClick={submitGuess}>ADIVINAR</button>
+            <button className="retro-btn" onClick={submitGuess}>ENVIAR</button>
           </>
         )}
       </div>
-      <div className="status">{statusMsg}</div>
     </div>
   );
 }

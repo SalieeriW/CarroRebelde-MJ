@@ -32,7 +32,6 @@ try {
     const txtPath = join(process.cwd(), 'resources', 'spanish.txt');
     const txtData = readFileSync(txtPath, 'utf-8');
     ALL_WORDS = txtData.split('\n').map(w => normalizeWord(w)).filter(w => w.length > 0);
-    console.log(`✅ Loaded ${ALL_WORDS.length} words from spanish.txt`);
 } catch (error) {
     console.error('❌ Error loading spanish.txt', error);
     ALL_WORDS = [];
