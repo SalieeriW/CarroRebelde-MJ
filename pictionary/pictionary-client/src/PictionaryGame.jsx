@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '../styles/pictionary.css';
+import './styles/pictionary.css';
 
 const SERVER_URL = 'http://localhost:2234';
 
