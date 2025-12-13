@@ -6,7 +6,7 @@ services:
   # ==========================================
   
   wordle-server:
-    build: ./minigame-1/minigame-1-server
+    build: ./wordle/wordle-server
     container_name: wordle-server
     ports:
       - "1234:1234"
@@ -15,14 +15,14 @@ services:
       - PORT=1234
     volumes:
       # Montar resources para desarrollo (opcional)
-      - ./minigame-1/minigame-1-server/resources:/app/resources:ro
+      - ./wordle/wordle-server/resources:/app/resources:ro
     networks:
       - minigames-network
     restart: unless-stopped
 
   wordle-client:
-    build: ./minigame-1/minigame-1-client
-    container_name: minigame-1-client
+    build: ./wordle/wordle-client
+    container_name: wordle-client
     ports:
       - "1000:1000"
     environment:
