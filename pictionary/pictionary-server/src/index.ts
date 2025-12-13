@@ -9,16 +9,15 @@ const PORT = process.env.PORT || 2234;
 
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '10mb' })); // Límite alto para recibir imágenes Base64
+app.use(express.json({ limit: '10mb' })); 
 
 // ============================================
-// 1. LÓGICA DE PALABRAS (Igual que Wordle)
+// 1. LÓGICA DE PALABRAS
 // ============================================
 
-let ALL_WORDS: string[] = [];  // Todas las palabras válidas (diccionario)
-let GAME_WORDS: string[] = []; // Palabras para dibujar
+let ALL_WORDS: string[] = [];  
+let GAME_WORDS: string[] = []; 
 
-// Función vital para comparar "Árbol" con "arbol"
 const normalizeWord = (word: string): string => {
     return word
         .normalize('NFD')
@@ -27,7 +26,7 @@ const normalizeWord = (word: string): string => {
         .trim();
 };
 
-// Cargar spanish.txt (Validación general)
+// Cargar spanish.txt
 try {
     const txtPath = join(process.cwd(), 'resources', 'spanish.txt');
     const txtData = readFileSync(txtPath, 'utf-8');
@@ -37,7 +36,7 @@ try {
     ALL_WORDS = [];
 }
 
-// Cargar spanish.json (Palabras del juego)
+// Cargar spanish.json
 try {
     const jsonPath = join(process.cwd(), 'resources', 'spanish.json');
     const jsonData = readFileSync(jsonPath, 'utf-8');
@@ -46,16 +45,16 @@ try {
     console.log(`✅ Loaded ${GAME_WORDS.length} game words from spanish.json`);
 } catch (error) {
     console.error('❌ Error loading spanish.json', error);
-    GAME_WORDS = ['GATO', 'PERRO', 'CASA', 'SOL']; // Fallback
+    GAME_WORDS = ['GATO', 'PERRO', 'CASA', 'SOL'];
 }
 
 // ============================================
-// 2. ESTADO DEL JUEGO (Sessiones)
+// 2. ESTADO DEL JUEGO
 // ============================================
 
 interface GameSession {
-    word: string;       // Palabra normalizada (EJ: "CAMION")
-    canvasData: string; // Base64
+    word: string;       
+    canvasData: string; 
     guesses: string[];
     solved: boolean;
     lastActivity: number;
@@ -63,11 +62,10 @@ interface GameSession {
 
 const sessions = new Map<string, GameSession>();
 
-// Limpieza automática de sesiones viejas (opcional, para no llenar memoria)
 setInterval(() => {
     const now = Date.now();
     sessions.forEach((session, id) => {
-        if (now - session.lastActivity > 3600000) { // 1 hora inactivo
+        if (now - session.lastActivity > 3600000) { 
             sessions.delete(id);
         }
     });
@@ -83,7 +81,6 @@ app.get('/api/pictionary/word', (req: Request, res: Response): any => {
     
     if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    // Si no existe la sesión, crearla con una palabra random de GAME_WORDS
     if (!sessions.has(sessionId)) {
         if (GAME_WORDS.length === 0) return res.status(500).json({ error: 'No words loaded' });
         
@@ -101,7 +98,6 @@ app.get('/api/pictionary/word', (req: Request, res: Response): any => {
     }
 
     const session = sessions.get(sessionId)!;
-    // IMPORTANTE: Devolvemos la palabra al Drawer
     res.json({ word: session.word, sessionId });
 });
 
@@ -118,16 +114,19 @@ app.post('/api/pictionary/draw', (req: Request, res: Response): any => {
     res.json({ success: true });
 });
 
-// --- GUESSER: Ver dibujo ---
+// --- GUESSER: Ver dibujo Y OBTENER LONGITUD ---
 app.get('/api/pictionary/canvas/:sessionId', (req: Request, res: Response): any => {
     const { sessionId } = req.params;
     
     const session = sessions.get(sessionId);
-    if (!session) return res.json({ canvasData: '', solved: false });
+    
+    // Si no hay sesión, devolvemos wordLength: 0
+    if (!session) return res.json({ canvasData: '', solved: false, wordLength: 0 }); 
 
     res.json({ 
         canvasData: session.canvasData,
-        solved: session.solved 
+        solved: session.solved,
+        wordLength: session.word.length // <--- ¡AQUÍ ESTÁ LA CLAVE! Enviamos el largo
     });
 });
 
@@ -141,11 +140,7 @@ app.post('/api/pictionary/guess', (req: Request, res: Response): any => {
     const session = sessions.get(sessionId)!;
     const normalizedGuess = normalizeWord(guess);
     
-    // Verificamos si es correcto
     const isCorrect = normalizedGuess === session.word;
-    
-    // (Opcional) Podríamos verificar si existe en ALL_WORDS para decir "Esa palabra no existe",
-    // pero en Pictionary suele bastar con Correcto/Incorrecto.
     const isValidWord = ALL_WORDS.includes(normalizedGuess); 
 
     session.guesses.push(normalizedGuess);
@@ -156,8 +151,8 @@ app.post('/api/pictionary/guess', (req: Request, res: Response): any => {
 
     res.json({ 
         correct: isCorrect, 
-        word: isCorrect ? session.word : null, // Revelar solo si acierta
-        isValidWord: isValidWord // Por si quieres mostrar "Esa palabra no existe" en el front
+        word: isCorrect ? session.word : null, 
+        isValidWord: isValidWord 
     });
 });
 

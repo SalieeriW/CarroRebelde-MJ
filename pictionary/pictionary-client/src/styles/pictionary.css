@@ -266,3 +266,63 @@ canvas {
 
 /* Animación de parpadeo estilo cursor */
 @keyframes blink { 50% { opacity: 0; } }
+
+/* --- UI DE ADIVINADOR (SLOTS) --- */
+.guesser-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+}
+
+.word-slots {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    cursor: text;
+    margin-bottom: 10px;
+}
+
+.slot {
+    width: 40px;
+    height: 50px;
+    border-bottom: 4px solid var(--text-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: var(--text-white);
+    font-family: 'Press Start 2P', cursive;
+    text-transform: uppercase;
+    transition: all 0.2s;
+}
+
+/* Efecto cuando hay letra escrita */
+.slot.filled {
+    border-color: var(--accent-yellow);
+    color: var(--accent-yellow);
+    text-shadow: 0 0 10px rgba(249, 215, 28, 0.5);
+    transform: translateY(-2px);
+}
+
+/* El input real está ahí, pero invisible */
+.ghost-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none; /* Para que el click vaya al slot container */
+    height: 0;
+    width: 0;
+}
+
+/* Ajuste móvil para los slots */
+@media (max-width: 600px) {
+    .slot {
+        width: 25px;
+        height: 35px;
+        font-size: 16px;
+        border-bottom-width: 3px;
+        gap: 5px;
+    }
+}
