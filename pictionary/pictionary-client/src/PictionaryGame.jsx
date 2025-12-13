@@ -1,9 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import './styles/pictionary.css'; 
+import './styles/pictionary.css'; // Asegúrate de la ruta
 
 const SERVER_URL = 'http://localhost:2234';
 
+// Colores disponibles para la paleta
+const PALETTE_COLORS = [
+    '#ffffff', // Blanco
+    '#f9d71c', // Amarillo Retro
+    '#e94560', // Rojo Retro
+    '#00ffcc', // Cian Neon
+    '#3498db', // Azul
+    '#2ecc71', // Verde
+    '#9b59b6', // Púrpura
+    '#e67e22'  // Naranja
+];
+
 function PictionaryGame() {
+  // --- ESTADOS ---
   const searchParams = new URLSearchParams(window.location.search);
   const urlSessionId = searchParams.get('sessionId');
   const urlRole = searchParams.get('role');
@@ -16,14 +29,47 @@ function PictionaryGame() {
   const [statusMsg, setStatusMsg] = useState('');
   const [isWon, setIsWon] = useState(false);
 
+  // NUEVOS ESTADOS
+  const [currentColor, setCurrentColor] = useState(PALETTE_COLORS[0]); // Color actual
+  const [showHelp, setShowHelp] = useState(false); // Mostrar modal ayuda
+
+  // Refs
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
 
+  // --- EFECTOS (Listeners y Sockets) ---
+
+  // 1. Escuchar Tecla F10
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F10') {
+        e.preventDefault(); // Evitar menú del navegador
+        setShowHelp(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // 2. Inicializar rol por URL
   useEffect(() => {
     if (urlRole === 'drawer') initDrawer();
     else if (urlRole === 'guesser') initGuesser();
   }, []);
+
+  // 3. Inicializar fondo de canvas al cargar el rol
+  useEffect(() => {
+    if (role && canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        // Coincide con el fondo del CSS retro
+        ctx.fillStyle = '#16213e'; 
+        ctx.fillRect(0, 0, 800, 600);
+    }
+  }, [role]);
+
+
+  // --- FUNCIONES DEL JUEGO ---
 
   const initDrawer = async () => {
     setRole('drawer');
@@ -68,11 +114,14 @@ function PictionaryGame() {
 
   const handleWin = () => {
       setIsWon(true);
-      setStatusMsg("¡VICTORIA! 🎉");
+      // Texto sin emoji
+      setStatusMsg(">> MISIÓN COMPLETADA <<");
       if (returnUrl) {
           setTimeout(() => { window.location.href = returnUrl; }, 3000);
       }
   };
+
+  // --- LÓGICA DE DIBUJO (Canvas) ---
 
   const startDrawing = (e) => {
     isDrawing.current = true;
@@ -92,7 +141,8 @@ function PictionaryGame() {
     ctx.beginPath();
     ctx.moveTo(lastPos.current.x, lastPos.current.y);
     ctx.lineTo(x, y);
-    ctx.strokeStyle = 'white';
+    // USAR EL COLOR SELECCIONADO
+    ctx.strokeStyle = currentColor; 
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.stroke();
@@ -115,7 +165,7 @@ function PictionaryGame() {
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#16213e';
+    ctx.fillStyle = '#16213e'; // Mismo fondo oscuro
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     stopDrawing(); 
   };
@@ -131,66 +181,104 @@ function PictionaryGame() {
     
     if (data.correct) {
       handleWin();
-      setStatusMsg(`¡CORRECTO! ERA ${data.word.toUpperCase()}`);
+      setStatusMsg(`>> CORRECTO: ${data.word.toUpperCase()} <<`);
     } else {
-      setStatusMsg("INCORRECTO, SIGUE INTENTANDO...");
+      setStatusMsg("[ ERROR: INTÉNTALO DE NUEVO ]");
       setTimeout(() => setStatusMsg(""), 2000);
     }
     setGuess('');
   };
 
-  useEffect(() => {
-    if (role && canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        ctx.fillStyle = '#16213e';
-        ctx.fillRect(0, 0, 800, 600);
-    }
-  }, [role]);
+  // --- COMPONENTE MODAL DE AYUDA ---
+  const HelpModal = () => (
+    <div className="retro-modal-overlay" onClick={() => setShowHelp(false)}>
+      <div className="retro-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header"> PRESIONA [F10] PARA AYUDA </div>
+        <div className="modal-content">
+          <p className="highlight">ROL: DIBUJANTE</p>
+          <ul className="retro-list">
+            <li>Dibuja la palabra objetivo.</li>
+            <li>Usa la paleta de colores superior.</li>
+            <li>PROHIBIDO escribir letras o números.</li>
+          </ul>
+          <br/>
+          <p className="highlight">ROL: ADIVINADOR</p>
+          <ul className="retro-list">
+            <li>Observa la pantalla.</li>
+            <li>Escribe qué crees que es y pulsa [ENTER].</li>
+          </ul>
+        </div>
+        <button className="retro-btn secondary full-width" onClick={() => setShowHelp(false)}>
+          [ CERRAR ]
+        </button>
+      </div>
+    </div>
+  );
 
-  // --- RENDERIZADO: MENÚ INICIAL ---
+  // --- RENDERIZADO MENÚ INICIAL ---
   if (!role) {
     return (
       <div className="retro-game">
+        {showHelp && <HelpModal />}
         <div className="retro-header">
-            <h1 className="retro-title">🎨 PICTIONARY DEV</h1>
+            <h1 className="retro-title">PICTIONARY.EXE</h1>
         </div>
         
-        {/* Tarjeta de información */}
         <div className="retro-card">
-            <p style={{marginBottom:'10px'}}>SALA ID:</p>
+            <p className="label">ID DE SESIÓN:</p>
             <div className="retro-id-box">{sessionId}</div>
-            
-            <p style={{marginTop:'20px', fontSize:'10px', color:'#aaa'}}>COMPARTE ESTA URL:</p>
+            <p className="label tiny">ENLACE PARA COMPARTIR:</p>
             <code className="retro-code">
                 {window.location.origin}?sessionId={sessionId}
             </code>
         </div>
 
         <div className="retro-controls">
-            <button className="retro-btn" onClick={initDrawer}>🖌️ DIBUJAR</button>
-            <button className="retro-btn secondary" onClick={initGuesser}>🤔 ADIVINAR</button>
+            <button className="retro-btn" onClick={initDrawer}>[ INICIAR DIBUJO ]</button>
+            <button className="retro-btn secondary" onClick={initGuesser}>[ INICIAR ADIVINANZA ]</button>
         </div>
+        
+        <div className="footer-hint">PRESS [F10] FOR HELP SYSTEM</div>
       </div>
     );
   }
 
-  // --- RENDERIZADO: JUEGO ACTIVO ---
+  // --- RENDERIZADO JUEGO ACTIVO ---
   return (
     <div className="retro-game">
+      {showHelp && <HelpModal />}
+      
       <div className="retro-header">
-        <h2 className="retro-title">{role === 'drawer' ? '🖌️ DIBUJANTE' : '🤔 ADIVINADOR'}</h2>
+        {/* Títulos sin emojis */}
+        <h2 className="retro-title">
+            {role === 'drawer' ? 'MODE: DIBUJANTE' : 'MODE: ADIVINADOR'}
+        </h2>
         
         {role === 'drawer' && (
             <div className="retro-word-box">
-                OBJETIVO: <span style={{color: '#f9d71c'}}>{word.toUpperCase()}</span>
+                OBJETIVO: <span className="highlight">{word.toUpperCase()}</span>
             </div>
         )}
         
-        {isWon && <div className="retro-win-msg">🎉 {statusMsg} 🎉</div>}
+        {isWon && <div className="retro-win-msg">{statusMsg}</div>}
         {!isWon && statusMsg && <div className="retro-status">{statusMsg}</div>}
       </div>
 
-      {/* Contenedor para el borde blanco del canvas */}
+      {/* PALETA DE COLORES (Solo Dibujante) */}
+      {role === 'drawer' && !isWon && (
+        <div className="retro-palette-container">
+            {PALETTE_COLORS.map(color => (
+                <button
+                    key={color}
+                    className={`palette-swatch ${currentColor === color ? 'active' : ''}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setCurrentColor(color)}
+                    title={color} // Tooltip simple
+                />
+            ))}
+        </div>
+      )}
+
       <div className="retro-canvas-container">
           <canvas
             ref={canvasRef}
@@ -205,7 +293,8 @@ function PictionaryGame() {
 
       <div className="retro-controls">
         {role === 'drawer' && (
-           <button className="retro-btn secondary" onClick={clearCanvas}>🗑️ BORRAR TODO</button>
+            // Botón rojo sin emoji
+           <button className="retro-btn danger" onClick={clearCanvas}>[ BORRAR PANTALLA ]</button>
         )}
 
         {role === 'guesser' && !isWon && (
@@ -215,13 +304,14 @@ function PictionaryGame() {
               type="text" 
               value={guess} 
               onChange={(e) => setGuess(e.target.value)}
-              placeholder="¿QUÉ ES?"
+              placeholder="INSERTAR DATOS..."
               onKeyPress={(e) => e.key === 'Enter' && submitGuess()}
             />
-            <button className="retro-btn" onClick={submitGuess}>ENVIAR</button>
+            <button className="retro-btn" onClick={submitGuess}>[ ENVIAR ]</button>
           </>
         )}
       </div>
+      <div className="footer-hint">PRESS [F10] FOR HELP SYSTEM</div>
     </div>
   );
 }

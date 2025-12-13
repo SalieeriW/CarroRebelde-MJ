@@ -1,83 +1,135 @@
+/* Importar la fuente pixelada que te gusta */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-/* --- LAYOUT PRINCIPAL --- */
+:root {
+  --bg-dark: #16213e;
+  --bg-panel: #1f2029;
+  --accent-yellow: #f9d71c;
+  --accent-red: #e94560;
+  --accent-green: #2ecc71;
+  --text-white: #ffffff;
+  --border-color: #ffffff;
+}
+
+/* --- LAYOUT GENERAL --- */
 .retro-game {
   width: 100%;
   min-height: 100vh;
-  background-color: #16213e;
+  background-color: var(--bg-dark);
+  /* Patrón de fondo sutil tipo scanline */
+  background-image: linear-gradient(rgba(0,0,0,0.1) 50%, transparent 50%);
+  background-size: 100% 4px;
+  
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: 'Press Start 2P', cursive;
-  color: white;
+  font-family: 'Press Start 2P', cursive; /* TU FUENTE PREFERIDA */
+  color: var(--text-white);
   padding: 20px;
   box-sizing: border-box;
 }
 
+/* --- HEADER Y TEXTOS --- */
 .retro-header {
   text-align: center;
   margin-bottom: 20px;
   width: 100%;
   max-width: 800px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
 }
 
 .retro-title {
   font-size: 24px;
-  color: #f9d71c; /* Amarillo Arcade */
-  text-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+  color: var(--accent-yellow);
+  text-transform: uppercase;
   margin: 0 0 15px 0;
-  line-height: 1.5;
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+  letter-spacing: 2px;
 }
 
-/* --- ESTADOS DEL JUEGO --- */
 .retro-word-box {
-    background: #0f3460;
+    background: var(--bg-panel);
+    border: 2px solid var(--accent-red);
     padding: 10px 20px;
-    border: 2px solid #e94560;
     font-size: 14px;
     margin-bottom: 10px;
+    display: inline-block;
     box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+}
+
+.highlight {
+    color: var(--accent-yellow);
 }
 
 .retro-status {
   font-size: 12px;
-  color: #e94560; /* Rojo Alerta */
+  color: var(--accent-red);
   margin-top: 10px;
-  animation: blink 1s infinite;
+  background: rgba(233, 69, 96, 0.1);
+  padding: 5px;
+  border: 2px solid var(--accent-red);
 }
 
 .retro-win-msg {
-    color: #00ff00;
+    color: var(--accent-green);
     font-size: 16px;
     margin-top: 10px;
+    border: 2px dashed var(--accent-green);
+    padding: 10px;
     text-shadow: 2px 2px 0 #000;
 }
 
+/* --- NUEVO: PALETA DE COLORES --- */
+.retro-palette-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    background: var(--bg-panel);
+    padding: 8px;
+    border: 2px solid var(--border-color);
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+}
+
+.palette-swatch {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #000;
+    cursor: pointer;
+    /* Efecto pixelado para los colores */
+    image-rendering: pixelated; 
+    transition: transform 0.1s;
+}
+
+.palette-swatch:hover {
+     transform: scale(1.1);
+}
+
+/* Swatch activo: borde blanco brillante */
+.palette-swatch.active {
+    border-color: var(--text-white);
+    box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--text-white);
+    z-index: 1;
+}
+
+
 /* --- CANVAS --- */
+/* Mantenemos el borde blanco grueso que te gusta */
 .retro-canvas-container {
-  border: 4px solid #ffffff;
-  background: #16213e; /* Coincide con el fillRect del JS */
+  border: 4px solid var(--border-color);
+  background: var(--bg-dark);
   box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5);
-  cursor: crosshair;
-  margin: 10px 0;
-  /* Para que sea responsive */
+  margin: 5px 0 20px 0;
   max-width: 100%;
   overflow: hidden; 
 }
 
 canvas {
   display: block;
-  max-width: 100%;
-  height: auto;
+  touch-action: none;
 }
 
-/* --- CONTROLES Y INPUTS --- */
+/* --- CONTROLES E INPUTS --- */
 .retro-controls {
-  margin-top: 20px;
   display: flex;
   gap: 15px;
   width: 100%;
@@ -87,12 +139,12 @@ canvas {
 }
 
 .retro-input {
-  background: #0f3460;
-  border: 4px solid #ffffff;
-  color: white;
+  background: var(--bg-panel);
+  border: 4px solid var(--border-color);
+  color: var(--text-white);
   padding: 15px;
   font-family: 'Press Start 2P', cursive;
-  font-size: 14px;
+  font-size: 12px;
   text-transform: uppercase;
   outline: none;
   flex-grow: 1;
@@ -101,25 +153,20 @@ canvas {
 }
 
 .retro-input:focus {
-  border-color: #f9d71c;
+  border-color: var(--accent-yellow);
 }
 
 .retro-btn {
-  background: #f9d71c;
-  border: 4px solid #ffffff;
-  color: #16213e;
-  padding: 15px 25px;
+  background: var(--accent-yellow);
+  border: 4px solid var(--border-color);
+  color: #000;
+  padding: 15px 20px;
   font-family: 'Press Start 2P', cursive;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   text-transform: uppercase;
-  box-shadow: 6px 6px 0 rgba(0,0,0,0.5);
-  transition: transform 0.1s;
-}
-
-.retro-btn:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 8px 8px 0 rgba(0,0,0,0.5);
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.5);
+  transition: all 0.1s;
 }
 
 .retro-btn:active {
@@ -128,14 +175,21 @@ canvas {
 }
 
 .retro-btn.secondary {
-  background: #e94560; /* Rojo para acciones destructivas o secundarias */
-  color: white;
+  background: #3498db; /* Azul para botones secundarios */
+  color: var(--text-white);
 }
 
-/* --- TARJETA DE MENÚ (Nueva) --- */
+/* Botón rojo para borrar */
+.retro-btn.danger {
+  background: var(--accent-red);
+  color: var(--text-white);
+}
+.full-width { width: 100%; }
+
+/* --- TARJETA DE MENÚ INICIAL --- */
 .retro-card {
-    background: #2a2a2a;
-    padding: 30px;
+    background: var(--bg-panel);
+    padding: 25px;
     border: 4px solid #555;
     text-align: center;
     box-shadow: 8px 8px 0 #000;
@@ -144,24 +198,71 @@ canvas {
 }
 
 .retro-id-box {
-    font-size: 20px;
-    color: #f9d71c;
-    letter-spacing: 2px;
+    font-size: 18px;
+    color: var(--accent-yellow);
     margin: 10px 0;
+    border: 2px dashed var(--accent-yellow);
+    padding: 5px;
 }
 
 .retro-code {
     display: block;
     background: #000;
     padding: 10px;
-    color: #00ff00;
+    color: var(--accent-green);
     font-size: 10px;
     word-break: break-all;
     margin-top: 5px;
-    border: 1px dashed #444;
+    border: 2px solid #333;
 }
 
-/* Animación simple */
-@keyframes blink {
-    50% { opacity: 0; }
+.label { font-size: 10px; color: #aaa; margin: 0; }
+.label.tiny { margin-top: 15px; }
+
+.footer-hint {
+    margin-top: 40px;
+    font-size: 10px;
+    opacity: 0.7;
+    animation: blink 2s infinite step-start;
 }
+
+/* --- NUEVO: MODAL DE AYUDA (F10) --- */
+.retro-modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); /* Fondo oscuro */
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+
+.retro-modal {
+    background: var(--bg-dark);
+    border: 4px solid var(--accent-yellow);
+    width: 500px;
+    max-width: 95%;
+    box-shadow: 10px 10px 0 #000;
+}
+
+.modal-header {
+    background: var(--accent-yellow);
+    color: #000;
+    padding: 10px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.modal-content {
+    padding: 20px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.retro-list {
+    padding-left: 20px;
+    margin: 10px 0;
+    list-style-type: square;
+    color: var(--accent-yellow);
+}
+.retro-list li { margin-bottom: 8px; color: var(--text-white); }
+
+/* Animación de parpadeo estilo cursor */
+@keyframes blink { 50% { opacity: 0; } }
