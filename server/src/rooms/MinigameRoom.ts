@@ -2,164 +2,165 @@ import { Room, Client } from "colyseus";
 import { MinigameState, MinigamePlayer } from "./schema/MinigameState";
 
 export class MinigameRoom extends Room<MinigameState> {
-    maxClients = 2;
+    maxClients = 4; // Aumentar para soportar más jugadores
     public roomCode: string = "";
+    private roleAssignments: { [minigameId: number]: string[] } = {
+        1: ["drawer", "guesser"], // Pictionary
+        2: ["player1", "player2"], // Genérico
+        3: ["wordSeer", "wordTyper"], // Wordle cooperativo
+        4: ["player1", "player2"],
+        5: ["player1", "player2"],
+        6: ["player1", "player2"]
+    };
 
     onCreate(options: any) {
-        try {
-            this.setState(new MinigameState());
+        this.setState(new MinigameState());
+        
+        this.roomCode = options.roomCode || this.generateRoomCode();
+        this.state.roomCode = this.roomCode;
+        this.state.selectedMinigame = options.minigameId || 1;
+        this.state.gamePhase = "waiting";
+        
+        console.log(`MinigameRoom created: ${this.roomCode}, game: ${this.state.selectedMinigame}`);
+        console.log(`🆔 Room ID: ${this.roomId}`);
+
+        if ((global as any).activeMinigameRooms) {
+            (global as any).activeMinigameRooms.set(this.roomCode, {
+                roomId: this.roomId,
+                roomCode: this.roomCode,
+                minigameId: this.state.selectedMinigame,
+                players: 0
+            });
+            console.log(`✅ Room registered in activeMinigameRooms`);
+        } else {
+            console.error('❌ activeMinigameRooms not available!');
+        }
+        
+        // Manejar acciones de jugadores
+        this.onMessage("player_action", (client, data) => {
+            const player = this.state.players.get(client.sessionId);
+            if (!player || this.state.gamePhase !== "playing") return;
             
-            // Generate or use provided room code
-            this.roomCode = options.roomCode || this.generateRoomCode();
-            this.state.roomCode = this.roomCode;
-            
-            // Get selected minigame from options (1-6)
-            this.state.selectedMinigame = options.minigameId || 1;
-            
-            this.state.gamePhase = "waiting";
-            this.state.gameData = "{}";
-            this.state.score = 0;
-            this.state.gameCompleted = false;
-            
-            // Store room info globally
-            if ((global as any).activeMinigameRooms) {
-                (global as any).activeMinigameRooms.set(this.roomCode, {
-                    roomId: this.roomId,
-                    roomCode: this.roomCode,
-                    minigameId: this.state.selectedMinigame,
-                    players: 0
+            // Validar que el jugador tenga el rol correcto para la acción
+            if (data.type === "draw" && player.role === "drawer") {
+                // Broadcast a todos excepto el que envió
+                this.broadcast("drawing_update", {
+                    sessionId: client.sessionId,
+                    data: data.drawingData
+                }, { except: client });
+            } else if (data.type === "guess" && player.role === "guesser") {
+                this.handleGuess(client, data.guess);
+            } else if (data.type === "word_input" && player.role === "wordTyper") {
+                this.broadcast("word_update", {
+                    letter: data.letter,
+                    position: data.position
                 });
             }
-            
-            console.log(`MinigameRoom created with code: ${this.roomCode}, minigame: ${this.state.selectedMinigame}`);
+        });
 
-            // Listen for game updates from clients
-            this.onMessage("game_update", (client, data) => {
-                // Update game state based on client input
-                if (this.state.gamePhase === "playing") {
-                    this.state.gameData = JSON.stringify(data);
-                }
-            });
+        this.onMessage("start_minigame", (client) => {
+            if (this.canStart()) {
+                this.startMinigame();
+            }
+        });
 
-            this.onMessage("player_action", (client, data) => {
-                // Handle player actions (movements, clicks, etc.)
-                const player = this.state.players.get(client.sessionId);
-                if (player && this.state.gamePhase === "playing") {
-                    // Broadcast action to all players
-                    this.broadcast("player_action", {
-                        sessionId: client.sessionId,
-                        action: data
-                    }, { except: client });
-                }
-            });
-
-            this.onMessage("start_minigame", (client) => {
-                if (this.state.players.size >= 2 && this.state.gamePhase === "waiting") {
-                    this.startMinigame();
-                }
-            });
-
-            this.onMessage("minigame_complete", (client, data) => {
-                if (this.state.gamePhase === "playing") {
-                    this.state.gameCompleted = true;
-                    this.state.score = data.score || 0;
-                    this.state.gamePhase = "finished";
-                    
-                    // Notify all players
-                    this.broadcast("minigame_complete", {
-                        score: this.state.score,
-                        success: data.success || false
-                    });
-                }
-            });
-        } catch (error) {
-            console.error("Error in MinigameRoom onCreate:", error);
-            throw error;
-        }
+        this.onMessage("minigame_complete", (client, data) => {
+            if (this.state.gamePhase === "playing") {
+                this.completeMinigame(data);
+            }
+        });
     }
 
     onJoin(client: Client, options: any) {
-        try {
-            console.log(`Client ${client.sessionId} joined minigame room ${this.roomCode}`);
-            
-            const player = new MinigamePlayer();
-            player.sessionId = client.sessionId;
-            player.connected = true;
-            
-            // Assign role based on order
-            const playerCount = this.state.players.size;
-            player.role = playerCount === 0 ? "player1" : "player2";
-            
-            this.state.players.set(client.sessionId, player);
-            
-            // Update room info
-            if ((global as any).activeMinigameRooms) {
-                const roomInfo = (global as any).activeMinigameRooms.get(this.roomCode);
-                if (roomInfo) {
-                    roomInfo.players = this.state.players.size;
-                    (global as any).activeMinigameRooms.set(this.roomCode, roomInfo);
+        console.log(`Client ${client.sessionId} joining room ${this.roomCode}`);
+        
+        const player = new MinigamePlayer();
+        player.sessionId = client.sessionId;
+        player.connected = true;
+        
+        // Asignar rol basado en el minijuego y orden de llegada
+        const playerCount = this.state.players.size;
+        const roles = this.roleAssignments[this.state.selectedMinigame] || ["player1", "player2"];
+        player.role = roles[playerCount % roles.length];
+        
+        this.state.players.set(client.sessionId, player);
+        
+        console.log(`Assigned role: ${player.role} to ${client.sessionId}`);
+        
+        // Auto-start si todos están listos
+        if (this.canStart()) {
+            setTimeout(() => {
+                if (this.canStart()) {
+                    this.startMinigame();
                 }
-            }
-            
-            // If both players are here, auto-start
-            if (this.state.players.size >= 2 && this.state.gamePhase === "waiting") {
-                // Wait a bit for both clients to be ready
-                setTimeout(() => {
-                    if (this.state.players.size >= 2 && this.state.gamePhase === "waiting") {
-                        this.startMinigame();
-                    }
-                }, 1000);
-            }
-        } catch (error) {
-            console.error("Error in MinigameRoom onJoin:", error);
-            throw error;
+            }, 2000); // Dar tiempo para que todos carguen
         }
     }
 
     onLeave(client: Client, consented: boolean) {
-        console.log(`Client ${client.sessionId} left minigame room`);
-        this.state.players.delete(client.sessionId);
+        console.log(`Client ${client.sessionId} left`);
         
-        // Update room info
-        if ((global as any).activeMinigameRooms) {
-            const roomInfo = (global as any).activeMinigameRooms.get(this.roomCode);
-            if (roomInfo) {
-                roomInfo.players = this.state.players.size;
-                (global as any).activeMinigameRooms.set(this.roomCode, roomInfo);
-            }
+        const player = this.state.players.get(client.sessionId);
+        if (player) {
+            player.connected = false;
         }
         
-        // If a player leaves during game, reset to waiting
-        if (this.state.gamePhase === "playing" && this.state.players.size < 2) {
-            this.state.gamePhase = "waiting";
+        // Si alguien se va durante el juego, pausar
+        if (this.state.gamePhase === "playing" && this.getConnectedCount() < 2) {
+            this.state.gamePhase = "paused";
+            this.broadcast("game_paused", { reason: "player_left" });
+        }
+        
+        // Limpiar después de 30 segundos si no vuelve
+        setTimeout(() => {
+            if (player && !player.connected) {
+                this.state.players.delete(client.sessionId);
+            }
+        }, 30000);
+    }
+
+    private canStart(): boolean {
+        const minPlayers = this.getMinPlayersForMinigame(this.state.selectedMinigame);
+        return this.getConnectedCount() >= minPlayers && 
+               this.state.gamePhase === "waiting";
+    }
+
+    private getMinPlayersForMinigame(minigameId: number): number {
+        // Algunos minijuegos requieren roles específicos
+        switch (minigameId) {
+            case 1: // Pictionary
+            case 3: // Wordle cooperativo
+                return 2;
+            default:
+                return 2;
         }
     }
 
-    onDispose() {
-        console.log(`MinigameRoom ${this.roomCode} disposed`);
-        
-        // Remove room from global map
-        if ((global as any).activeMinigameRooms) {
-            (global as any).activeMinigameRooms.delete(this.roomCode);
-        }
+    private getConnectedCount(): number {
+        let count = 0;
+        this.state.players.forEach(p => {
+            if (p.connected) count++;
+        });
+        return count;
     }
 
     private startMinigame() {
         this.state.gamePhase = "playing";
         this.state.gameCompleted = false;
         this.state.score = 0;
-        
-        // Set time limit based on minigame (default 60 seconds)
         this.state.timeLeft = 60000;
         
-        // Start countdown timer
+        // Inicializar datos específicos del minijuego
+        const gameData = this.initializeMinigameData(this.state.selectedMinigame);
+        this.state.gameData = JSON.stringify(gameData);
+        
+        // Timer
         const interval = setInterval(() => {
             if (this.state.gamePhase === "playing" && this.state.timeLeft > 0) {
                 this.state.timeLeft -= 1000;
                 if (this.state.timeLeft <= 0) {
                     clearInterval(interval);
-                    this.state.gamePhase = "finished";
-                    this.broadcast("time_up", {});
+                    this.completeMinigame({ success: false, timeout: true });
                 }
             } else {
                 clearInterval(interval);
@@ -168,8 +169,84 @@ export class MinigameRoom extends Room<MinigameState> {
         
         this.broadcast("minigame_started", {
             minigameId: this.state.selectedMinigame,
-            timeLimit: this.state.timeLeft
+            timeLimit: this.state.timeLeft,
+            roles: this.getRolesMap()
         });
+    }
+
+    private getRolesMap(): { [sessionId: string]: string } {
+        const map: { [sessionId: string]: string } = {};
+        this.state.players.forEach((player, sessionId) => {
+            map[sessionId] = player.role;
+        });
+        return map;
+    }
+
+    private initializeMinigameData(minigameId: number): any {
+        switch (minigameId) {
+            case 1: // Pictionary
+                return {
+                    word: this.getRandomWord(),
+                    currentDrawer: this.getPlayerByRole("drawer"),
+                    currentGuesser: this.getPlayerByRole("guesser")
+                };
+            case 3: // Wordle
+                return {
+                    word: this.getRandomWord(5), // Palabra de 5 letras
+                    attempts: 0,
+                    maxAttempts: 6
+                };
+            default:
+                return {};
+        }
+    }
+
+    private getPlayerByRole(role: string): string | null {
+        let result: string | null = null;
+        this.state.players.forEach((player, sessionId) => {
+            if (player.role === role) {
+                result = sessionId;
+            }
+        });
+        return result;
+    }
+
+    private handleGuess(client: Client, guess: string) {
+        const gameData = JSON.parse(this.state.gameData);
+        const correct = guess.toLowerCase() === gameData.word.toLowerCase();
+        
+        this.broadcast("guess_result", {
+            guess: guess,
+            correct: correct,
+            guesser: client.sessionId
+        });
+        
+        if (correct) {
+            this.completeMinigame({ success: true, score: 100 });
+        }
+    }
+
+    private completeMinigame(data: any) {
+        this.state.gameCompleted = true;
+        this.state.score = data.score || 0;
+        this.state.gamePhase = "finished";
+        
+        this.broadcast("minigame_complete", {
+            score: this.state.score,
+            success: data.success || false
+        });
+        
+        // Dar tiempo para ver resultados antes de limpiar
+        setTimeout(() => {
+            this.disconnect();
+        }, 5000);
+    }
+
+    private getRandomWord(length?: number): string {
+        const words = length === 5 
+            ? ["GATOS", "PERRO", "CASAS", "LIBRO", "MUNDO"]
+            : ["gato", "perro", "casa", "árbol", "coche"];
+        return words[Math.floor(Math.random() * words.length)];
     }
 
     private generateRoomCode(): string {
@@ -181,4 +258,3 @@ export class MinigameRoom extends Room<MinigameState> {
         return code;
     }
 }
-
