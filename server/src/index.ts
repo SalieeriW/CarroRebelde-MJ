@@ -3,12 +3,15 @@ import cors from 'cors';
 import { Server } from 'colyseus';
 import { createServer } from 'http';
 import { MinigameRoom } from './rooms/MinigameRoom';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { randomInt } from 'crypto';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(cors({
-  origin: true, // Allow all origins
+  origin: true,
   credentials: true
 }));
 app.use(express.json());
@@ -18,7 +21,6 @@ const gameServer = new Server({
   server: httpServer,
 });
 
-// Store room info in memory (roomCode -> roomId mapping)
 interface MinigameRoomInfo {
   roomId: string;
   roomCode: string;
@@ -28,18 +30,139 @@ interface MinigameRoomInfo {
 
 const activeMinigameRooms = new Map<string, MinigameRoomInfo>();
 
-// Define the minigame room
 gameServer.define('minigame_room', MinigameRoom)
   .enableRealtimeListing();
 
-// Export activeMinigameRooms for MinigameRoom to use
 (global as any).activeMinigameRooms = activeMinigameRooms;
+
+// ============================================
+// WORDLE - CARGAR PALABRAS
+// ============================================
+
+let ALL_WORDS: string[] = [];
+
+const normalizeWord = (word: string): string => {
+  return word
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+};
+
+try {
+  const jsonPath = join(process.cwd(), 'resources', 'spanish.json');
+  const jsonData = readFileSync(jsonPath, 'utf-8');
+  const words = JSON.parse(jsonData);
+  
+  ALL_WORDS = words
+    .map((word: string) => normalizeWord(word))
+    .filter((word: string) => word.length === 5);
+  
+  console.log(`✅ Loaded ${ALL_WORDS.length} words`);
+} catch (error) {
+  console.error('❌ Error loading words:', error);
+  ALL_WORDS = ['GATOS', 'PERRO', 'CASAS', 'LIBRO', 'MUNDO', 'FELIZ', 'AMIGO'];
+}
+
+// ============================================
+// WORDLE ENDPOINTS
+// ============================================
+
+// Obtener palabra aleatoria
+app.get('/api/wordle/word', (req, res) => {
+  if (ALL_WORDS.length === 0) {
+    return res.status(500).json({ error: 'No words available' });
+  }
+  
+  const randomIndex = randomInt(0, ALL_WORDS.length);
+  const word = ALL_WORDS[randomIndex];
+  
+  console.log(`🎯 Selected word: ${word}`);
+  res.json({ word });
+});
+
+// Verificar si palabra es válida (ACEPTA CUALQUIER PALABRA DE spanish.json)
+app.post('/api/wordle/check-word', (req, res) => {
+  const { word } = req.body;
+  
+  if (!word || typeof word !== 'string') {
+    return res.status(400).json({ error: 'Missing word', isValid: false });
+  }
+  
+  const normalizedWord = normalizeWord(word);
+  
+  if (normalizedWord.length !== 5) {
+    return res.status(400).json({ error: 'Word must be 5 letters', isValid: false });
+  }
+  
+  // ACEPTA CUALQUIER PALABRA QUE ESTÉ EN spanish.json
+  const isValid = ALL_WORDS.includes(normalizedWord);
+  
+  console.log(`🔍 Check: ${word} -> ${normalizedWord} = ${isValid ? 'VALID' : 'INVALID'}`);
+  
+  res.json({ isValid, word: normalizedWord });
+});
+
+// Validar guess contra palabra objetivo
+app.post('/api/wordle/validate', (req, res) => {
+  const { guess, word } = req.body;
+  
+  if (!guess || !word) {
+    return res.status(400).json({ error: 'Missing guess or word' });
+  }
+  
+  const normalizedGuess = normalizeWord(guess);
+  const normalizedWord = normalizeWord(word);
+  
+  if (normalizedGuess.length !== 5 || normalizedWord.length !== 5) {
+    return res.status(400).json({ error: 'Words must be 5 letters' });
+  }
+  
+  // Evaluar cada letra
+  const evaluation = normalizedGuess.split('').map((letter, index) => {
+    if (normalizedWord[index] === letter) {
+      return 'correct';
+    } else if (normalizedWord.includes(letter)) {
+      const letterCount = normalizedWord.split('').filter(l => l === letter).length;
+      const correctCount = normalizedWord.split('').filter((l, i) => 
+        l === letter && normalizedGuess[i] === letter
+      ).length;
+      const presentCount = normalizedGuess.split('').filter((l, i) => 
+        l === letter && normalizedWord[i] !== letter && i < index
+      ).length;
+      
+      if (presentCount < letterCount - correctCount) {
+        return 'present';
+      }
+    }
+    return 'absent';
+  });
+  
+  const isCorrect = normalizedGuess === normalizedWord;
+  
+  console.log(`✓ Validate: ${normalizedGuess} vs ${normalizedWord} = ${isCorrect ? 'CORRECT' : 'WRONG'}`);
+  
+  res.json({
+    evaluation,
+    isCorrect,
+    isValid: ALL_WORDS.includes(normalizedGuess)
+  });
+});
+
+// Guardar resultado
+app.post('/api/wordle/result', (req, res) => {
+  const { word, attempts, won, playerId } = req.body;
+  console.log(`📊 Result:`, { word, attempts, won, playerId });
+  res.json({ success: true, message: 'Result saved' });
+});
+
+// ============================================
+// ROOM ENDPOINTS
+// ============================================
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Endpoint to find room by code
 app.get('/rooms/:roomCode', (req, res) => {
   try {
     const roomCode = req.params.roomCode.toUpperCase();
@@ -56,7 +179,6 @@ app.get('/rooms/:roomCode', (req, res) => {
   }
 });
 
-// Endpoint to list all active rooms
 app.get('/rooms', (req, res) => {
   try {
     const roomList = Array.from(activeMinigameRooms.values())

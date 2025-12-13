@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import '../../styles/wordle.css';
 
-const WORD_LENGTH = 5;
 const MAX_ATTEMPTS = 6;
 
 const Minigame1 = () => {
   const [targetWord, setTargetWord] = useState('');
+  const [wordLength, setWordLength] = useState(5); // Dinámico
   const [guesses, setGuesses] = useState([]);
   const [currentGuess, setCurrentGuess] = useState('');
   const [currentRow, setCurrentRow] = useState(0);
@@ -20,7 +20,8 @@ const Minigame1 = () => {
         const response = await fetch('http://localhost:1234/api/wordle/word');
         const data = await response.json();
         setTargetWord(data.word);
-        console.log('🎯 Word loaded');
+        setWordLength(data.word.length); // Establecer longitud dinámica
+        console.log(`🎯 Word loaded: ${data.word.length} letters`);
       } catch (error) {
         console.error('Error:', error);
         setMessage('ERROR LOADING WORD');
@@ -31,10 +32,10 @@ const Minigame1 = () => {
 
   const handleKeyPress = useCallback((letter) => {
     if (gameStatus !== 'playing') return;
-    if (currentGuess.length < WORD_LENGTH) {
+    if (currentGuess.length < wordLength) { // Usar wordLength dinámico
       setCurrentGuess(prev => prev + letter);
     }
-  }, [gameStatus, currentGuess.length]);
+  }, [gameStatus, currentGuess.length, wordLength]);
 
   const handleBackspace = useCallback(() => {
     if (gameStatus !== 'playing') return;
@@ -42,7 +43,7 @@ const Minigame1 = () => {
   }, [gameStatus]);
 
   const handleSubmit = useCallback(async () => {
-    if (currentGuess.length !== WORD_LENGTH || gameStatus !== 'playing') {
+    if (currentGuess.length !== wordLength || gameStatus !== 'playing') {
       setShake(true);
       setTimeout(() => setShake(false), 500);
       return;
@@ -120,7 +121,7 @@ const Minigame1 = () => {
       setMessage('ERROR');
       setTimeout(() => setMessage(''), 1500);
     }
-  }, [currentGuess, targetWord, guesses, gameStatus]);
+  }, [currentGuess, targetWord, guesses, gameStatus, wordLength]);
 
   // Teclado físico
   useEffect(() => {
@@ -149,13 +150,13 @@ const Minigame1 = () => {
       
       grid.push(
         <div key={i} className={`wordle-row ${shake && isCurrentRow ? 'shake' : ''}`}>
-          {Array.from({ length: WORD_LENGTH }).map((_, j) => {
+          {Array.from({ length: wordLength }).map((_, j) => { // Dinámico
             let letter = '';
             let state = '';
             
             if (guess) {
-              letter = guess.word[j];
-              state = guess.evaluation[j];
+              letter = guess.word[j] || '';
+              state = guess.evaluation[j] || '';
             } else if (isCurrentRow && currentGuess[j]) {
               letter = currentGuess[j];
               state = 'filled';
@@ -190,7 +191,7 @@ const Minigame1 = () => {
 
       <div className="wordle-footer">
         <p className="wordle-instruction">
-          Escribe una palabra de 5 letras<br/>
+          Escribe una palabra de {wordLength} letras<br/>
           Presiona ENTER para enviar
         </p>
       </div>
