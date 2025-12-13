@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # MINIJUEGO 1 - WORDLE (Puertos 1000-1234)
+  # ==========================================
+  
+  wordle-server:
+    build: ./minigame-1/minigame-1-server
+    container_name: wordle-server
+    ports:
+      - "1234:1234"
+    environment:
+      - NODE_ENV=production
+      - PORT=1234
+    volumes:
+      # Montar resources para desarrollo (opcional)
+      - ./minigame-1/minigame-1-server/resources:/app/resources:ro
+    networks:
+      - minigames-network
+    restart: unless-stopped
+
+  wordle-client:
+    build: ./minigame-1/minigame-1-client
+    container_name: minigame-1-client
+    ports:
+      - "1000:1000"
+    environment:
+      - VITE_SERVER_URL=http://localhost:1234
+    depends_on:
+      - wordle-server
+    networks:
+      - minigames-network
+    restart: unless-stopped
+
+  # ==========================================
+  # AQUÍ IRÁN LOS OTROS MINIJUEGOS
+  # ==========================================
+  #   ...
+
+networks:
+  minigames-network:
+    driver: bridge
