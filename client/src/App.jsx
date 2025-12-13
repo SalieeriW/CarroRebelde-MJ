@@ -6,6 +6,8 @@ import Minigame3 from './components/layout/Minigame3'
 import Minigame4 from './components/layout/Minigame4'
 import Minigame5 from './components/layout/Minigame5'
 import Minigame6 from './components/layout/Minigame6'
+import TwoKeysGate from '../two-keys-gate/client/src/components/TwoKeysGate'
+import StandaloneTest from '../two-keys-gate/client/src/components/StandaloneTest'
 
 function App() {
   const [currentMinigame, setCurrentMinigame] = useState(null)
@@ -19,7 +21,7 @@ function App() {
     const hash = window.location.hash.slice(1)
     const gameId = minigameId || hash || null
     
-    if (gameId && gameId >= 1 && gameId <= 6) {
+    if (gameId && gameId >= 1 && gameId <= 8) {
       setCurrentMinigame(parseInt(gameId))
     }
   }, [])
@@ -38,6 +40,10 @@ function App() {
         return <Minigame5 />
       case 6:
         return <Minigame6 />
+      case 7:
+        return <TwoKeysGate />
+      case 8:
+        return <StandaloneTest />
       default:
         return (
           <div className="pixel-lobby">
@@ -47,7 +53,7 @@ function App() {
               <p className="lobby-subtitle">Select a minigame to play</p>
               <div className="lobby-section">
                 <div className="rooms-list">
-                  {[1, 2, 3, 4, 5, 6].map((num) => (
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
                     <div
                       key={num}
                       className="room-item"
@@ -57,7 +63,11 @@ function App() {
                         window.history.pushState({}, '', `?game=${num}`)
                       }}
                     >
-                      <span className="room-code">MINIGAME {num}</span>
+                      <span className="room-code">
+                        MINIGAME {num}
+                        {num === 7 && ' - La Puerta de Dos Llaves'}
+                        {num === 8 && ' - 🧪 TEST (Sin servidor)'}
+                      </span>
                       <span className="room-players">→</span>
                     </div>
                   ))}

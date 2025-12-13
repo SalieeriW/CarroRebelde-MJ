@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  twokeys-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: twokeys-server
+    ports:
+      - "3001:3001"
+    networks:
+      - twokeys-net
+    restart: unless-stopped
+
+  player-a:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: twokeys-player-a
+    environment:
+      - PORT=5174
+      - VITE_COLYSEUS_URL=ws://twokeys-server:3001
+      - VITE_DEFAULT_MODE=multi
+      - VITE_DEFAULT_ROLE=A
+    ports:
+      - "5174:5174"
+    depends_on:
+      - twokeys-server
+    networks:
+      - twokeys-net
+    restart: unless-stopped
+
+  player-b:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: twokeys-player-b
+    environment:
+      - PORT=5175
+      - VITE_COLYSEUS_URL=ws://twokeys-server:3001
+      - VITE_DEFAULT_MODE=multi
+      - VITE_DEFAULT_ROLE=B
+    ports:
+      - "5175:5175"
+    depends_on:
+      - twokeys-server
+    networks:
+      - twokeys-net
+    restart: unless-stopped
+
+networks:
+  twokeys-net:
+    driver: bridge

@@ -2,32 +2,26 @@ import express from 'express';
 import cors from 'cors';
 import { Server } from 'colyseus';
 import { createServer } from 'http';
-
-// Import TwoKeysRoom
-import { TwoKeysRoom } from '../two-keys-gate/server/src/rooms/TwoKeysRoom';
+import { TwoKeysRoom } from './rooms/TwoKeysRoom';
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT) || 3001;
 
 app.use(cors());
 app.use(express.json());
 
 const httpServer = createServer(app);
 const gameServer = new Server({
-  server: httpServer,
+  server: httpServer
 });
-
-// Aquí defines tus rooms de Colyseus
-// gameServer.define('room_name', YourRoomClass);
 
 // Register TwoKeysRoom
 gameServer.define('two_keys', TwoKeysRoom);
 console.log('✓ TwoKeysRoom registered');
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', message: 'Two Keys Gate Server Running' });
 });
 
-httpServer.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-});
+gameServer.listen(port);
+console.log(`🎮 Two Keys Gate Server running on http://localhost:${port}`);
