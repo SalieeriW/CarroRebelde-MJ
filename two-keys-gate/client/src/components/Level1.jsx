@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import TeamChat from './TeamChat';
 import AnswerButton from './AnswerButton';
 import HintPanel from './HintPanel';
@@ -11,7 +11,10 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
   const [otherPlayerConfirmed, setOtherPlayerConfirmed] = useState(false);
   const [showDialog, setShowDialog] = useState(null);
 
-  const level = levelData.levels[0]; // Level 1
+  const level = useMemo(() => {
+    const idx = Math.max(0, Math.min(levelData.levels.length - 1, (state?.levelId || 1) - 1));
+    return levelData.levels[idx];
+  }, [state?.levelId]);
 
   // Sync local UI flags based on shared state
   useEffect(() => {
@@ -28,6 +31,12 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
       setTimeout(() => setSelectedAnswers([]), 500);
     }
   }, [state, myRole]);
+
+  // Clear selection when level changes
+  useEffect(() => {
+    setSelectedAnswers([]);
+    setIsConfirming(false);
+  }, [state?.levelId]);
 
   const handleAnswerClick = (answer) => {
     if (isConfirming) return;
@@ -120,6 +129,16 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
 
   // Messages from state
   const chatMessages = state.chatMessages ? Array.from(state.chatMessages) : [];
+  const totalLevels = levelData.levels.length;
+  const shuffledOptions = useMemo(() => {
+    const arr = Array.from(level.options || []);
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.levelId, level.options]);
 
   return (
     <div className="pixel-view level-view">
@@ -143,7 +162,7 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
           ← Volver
         </button>
         <div className="level-title">{level.nameES}</div>
-        <div className="level-progress">Nivel 1/3</div>
+        <div className="level-progress">Nivel {state?.levelId || 1}/{totalLevels}</div>
       </div>
 
       <div className="level-container">
@@ -182,7 +201,7 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
             </div>
 
             <div className="answer-grid">
-              {level.options.map((option) => {
+              {shuffledOptions.map((option) => {
                 const isSelected = selectedAnswers.includes(option);
                 const selectionIndex = selectedAnswers.indexOf(option);
 

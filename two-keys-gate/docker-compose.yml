@@ -19,9 +19,7 @@ services:
     container_name: twokeys-player-a
     environment:
       - PORT=5174
-      - VITE_COLYSEUS_URL=ws://twokeys-server:3001
-      - VITE_DEFAULT_MODE=multi
-      - VITE_DEFAULT_ROLE=A
+      - VITE_API_URL=http://localhost:3001
     ports:
       - "5174:5174"
     depends_on:
@@ -37,9 +35,7 @@ services:
     container_name: twokeys-player-b
     environment:
       - PORT=5175
-      - VITE_COLYSEUS_URL=ws://twokeys-server:3001
-      - VITE_DEFAULT_MODE=multi
-      - VITE_DEFAULT_ROLE=B
+      - VITE_API_URL=http://localhost:3001
     ports:
       - "5175:5175"
     depends_on:

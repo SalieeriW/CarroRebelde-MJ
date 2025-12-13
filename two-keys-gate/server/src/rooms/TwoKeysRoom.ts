@@ -4,6 +4,8 @@ import levelData from '../../../shared/levelData.json';
 
 export class TwoKeysRoom extends Room<TwoKeysState> {
   maxClients = 3; // 2 players + 1 moderator
+  private countdownTimeout: any = null;
+  private readonly START_DELAY_MS = 5000;
 
   onCreate(options: any) {
     this.setState(new TwoKeysState());
@@ -13,6 +15,8 @@ export class TwoKeysRoom extends Room<TwoKeysState> {
     this.state.levelId = options.levelId || 1;
     this.state.phase = 'lobby';
     this.state.createdAt = Date.now();
+    this.state.startAt = 0;
+    this.state.countdownMs = 0;
     // Expose session code so clients can discover/join via getAvailableRooms
     this.setMetadata({ sessionCode: this.state.sessionCode });
 
@@ -31,12 +35,25 @@ export class TwoKeysRoom extends Room<TwoKeysState> {
       this.handleChatMessage(client, data);
     });
 
-    this.onMessage('player_ready', (client) => {
-      this.handlePlayerReady(client);
+    this.onMessage('player_ready', (client, data) => {
+      this.handlePlayerReady(client, data);
     });
 
     this.onMessage('start_game', (client) => {
-      this.handleStartGame(client);
+      // Backward compatibility: treat as start request when both ready
+      this.handleStartRequest(client);
+    });
+
+    this.onMessage('start_request', (client) => {
+      this.handleStartRequest(client);
+    });
+
+    this.onMessage('claim_role', (client, data) => {
+      this.handleClaimRole(client, data);
+    });
+
+    this.onMessage('release_role', (client, data) => {
+      this.handleReleaseRole(client, data);
     });
 
     this.onMessage('moderator_hint', (client, data) => {
@@ -77,69 +94,113 @@ export class TwoKeysRoom extends Room<TwoKeysState> {
       return;
     }
 
-    // Assign player role
-    if (!this.state.playerA.sessionId) {
-      this.state.playerA.sessionId = client.sessionId;
-      this.state.playerA.role = 'A';
-      this.state.playersConnected++;
-      client.send('role_assigned', {
-        role: 'A',
-        sessionCode: this.state.sessionCode
-      });
-      console.log(`[TwoKeysRoom] Player A assigned: ${client.sessionId}`);
-    } else if (!this.state.playerB.sessionId) {
-      this.state.playerB.sessionId = client.sessionId;
-      this.state.playerB.role = 'B';
-      this.state.playersConnected++;
-      client.send('role_assigned', {
-        role: 'B',
-        sessionCode: this.state.sessionCode
-      });
-      console.log(`[TwoKeysRoom] Player B assigned: ${client.sessionId}`);
-
-      // Both players ready, can start briefing
-      this.broadcast('both_players_connected', {
-        message: '¡Ambos jugadores conectados! Prepárense para comenzar.'
-      });
-    } else {
-      // Room is full
-      client.send('room_full', {
-        message: 'La sala está llena. Por favor, intenta con otro código.'
-      });
-      client.leave();
-    }
+    // No auto-assignment; clients claim seats from lobby.
+    client.send('session_info', {
+      sessionCode: this.state.sessionCode,
+      phase: this.state.phase
+    });
   }
 
-  handlePlayerReady(client: Client) {
+  handleClaimRole(client: Client, data: any) {
+    const desiredRole = (data?.role || '').toUpperCase();
+    if (desiredRole !== 'A' && desiredRole !== 'B') return;
+
+    const target = desiredRole === 'A' ? this.state.playerA : this.state.playerB;
+    if (target.sessionId && target.sessionId !== client.sessionId) {
+      client.send('role_denied', { role: desiredRole });
+      return;
+    }
+
+    // If the same client already owns the other seat, free it
+    const other = desiredRole === 'A' ? this.state.playerB : this.state.playerA;
+    if (other.sessionId === client.sessionId) {
+      this.resetPlayer(other, desiredRole === 'A' ? 'B' : 'A');
+    }
+
+    this.resetPlayer(target, desiredRole as 'A' | 'B');
+    target.sessionId = client.sessionId;
+    target.role = desiredRole;
+    this.state.playersConnected = this.countConnectedPlayers();
+    this.cancelCountdownIfNeeded();
+
+    client.send('role_assigned', {
+      role: desiredRole,
+      sessionCode: this.state.sessionCode
+    });
+  }
+
+  handleReleaseRole(client: Client, data: any) {
+    const role = (data?.role || '').toUpperCase();
+    if (role === 'A' && this.state.playerA.sessionId === client.sessionId) {
+      this.resetPlayer(this.state.playerA, 'A');
+    }
+    if (role === 'B' && this.state.playerB.sessionId === client.sessionId) {
+      this.resetPlayer(this.state.playerB, 'B');
+    }
+    if (!role) {
+      if (this.state.playerA.sessionId === client.sessionId) {
+        this.resetPlayer(this.state.playerA, 'A');
+      }
+      if (this.state.playerB.sessionId === client.sessionId) {
+        this.resetPlayer(this.state.playerB, 'B');
+      }
+    }
+    this.state.playersConnected = this.countConnectedPlayers();
+    this.cancelCountdownIfNeeded();
+  }
+
+  handlePlayerReady(client: Client, data: any) {
     const player = this.getPlayerState(client);
     if (player) {
-      player.isReady = true;
-      console.log(`[TwoKeysRoom] Player ${player.role} is ready`);
-
-      // Check if both players are ready
-      if (this.state.playerA.isReady && this.state.playerB.isReady) {
-        this.state.phase = 'briefing';
-        this.broadcast('phase_changed', { phase: 'briefing' });
-        console.log(`[TwoKeysRoom] Moving to briefing phase`);
-
-        // Auto-start game after briefing (30 seconds)
-        this.clock.setTimeout(() => {
-          if (this.state.phase === 'briefing') {
-            this.state.phase = 'active';
-            this.broadcast('phase_changed', { phase: 'active' });
-            console.log(`[TwoKeysRoom] Moving to active phase`);
-          }
-        }, 30000);
+      player.isReady = data?.ready === false ? false : true;
+      console.log(`[TwoKeysRoom] Player ${player.role} is ready: ${player.isReady}`);
+      if (!player.isReady) {
+        this.cancelCountdownIfNeeded();
       }
     }
   }
 
+  handleStartRequest(client: Client) {
+    const aReady = this.state.playerA.sessionId && this.state.playerA.isReady;
+    const bReady = this.state.playerB.sessionId && this.state.playerB.isReady;
+
+    if (!aReady || !bReady) {
+      client.send('start_rejected', { reason: 'Players not ready' });
+      return;
+    }
+
+    if (this.state.phase === 'briefing' && this.state.startAt > Date.now()) {
+      return;
+    }
+
+    this.state.phase = 'briefing';
+    this.state.countdownMs = this.START_DELAY_MS;
+    this.state.startAt = Date.now() + this.START_DELAY_MS;
+    console.log(`[TwoKeysRoom] Countdown started, game begins at ${this.state.startAt}`);
+
+    if (this.countdownTimeout) {
+      this.countdownTimeout.clear();
+      this.countdownTimeout = null;
+    }
+    this.countdownTimeout = this.clock.setTimeout(() => {
+      this.state.phase = 'active';
+      this.state.countdownMs = 0;
+      this.state.startAt = 0;
+      console.log(`[TwoKeysRoom] Game started after countdown`);
+    }, this.START_DELAY_MS);
+  }
+
   handleStartGame(client: Client) {
-    // Manual start from briefing
+    // Manual start for backward compatibility
     if (this.state.phase === 'briefing') {
       this.state.phase = 'active';
-      this.broadcast('phase_changed', { phase: 'active' });
+      this.state.countdownMs = 0;
+      this.state.startAt = 0;
       console.log(`[TwoKeysRoom] Game started manually`);
+      if (this.countdownTimeout) {
+        this.countdownTimeout.clear();
+        this.countdownTimeout = null;
+      }
     }
   }
 
@@ -353,19 +414,45 @@ export class TwoKeysRoom extends Room<TwoKeysState> {
 
     if (player) {
       console.log(`[TwoKeysRoom] Player ${player.role} left`);
-      this.state.playersConnected--;
+      this.resetPlayer(player, player.role as 'A' | 'B');
+      this.state.playersConnected = this.countConnectedPlayers();
+      this.cancelCountdownIfNeeded();
 
       this.broadcast('player_left', {
         role: player.role,
         message: 'Tu compañero se ha desconectado. Puedes esperar o volver al tablero.'
       });
-
-      // Allow reconnection for 2 minutes
-      this.allowReconnection(client, 120);
     }
   }
 
   onDispose() {
     console.log(`[TwoKeysRoom] Room ${this.roomId} disposed`);
+  }
+
+  private resetPlayer(player: PlayerState, role: 'A' | 'B') {
+    player.sessionId = '';
+    player.role = role;
+    player.isReady = false;
+    player.confirmedAt = 0;
+    player.selectedAnswer.clear();
+  }
+
+  private countConnectedPlayers(): number {
+    let count = 0;
+    if (this.state.playerA.sessionId) count++;
+    if (this.state.playerB.sessionId) count++;
+    return count;
+  }
+
+  private cancelCountdownIfNeeded() {
+    if (this.countdownTimeout) {
+      this.countdownTimeout.clear();
+      this.countdownTimeout = null;
+    }
+    if (this.state.phase === 'briefing') {
+      this.state.phase = 'lobby';
+    }
+    this.state.startAt = 0;
+    this.state.countdownMs = 0;
   }
 }

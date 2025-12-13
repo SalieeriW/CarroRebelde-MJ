@@ -1,24 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import levelData from '../../../shared/levelData.json';
 
-const Briefing = ({ onStart, onExit }) => {
-  const [countdown, setCountdown] = useState(30);
+const Briefing = ({ countdownMs = 0, onExit }) => {
+  const [remaining, setRemaining] = useState(countdownMs);
   const briefing = levelData.briefing;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onStart();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    setRemaining(countdownMs);
+  }, [countdownMs]);
 
-    return () => clearInterval(timer);
-  }, [onStart]);
+  useEffect(() => {
+    if (!countdownMs) return undefined;
+    const id = setInterval(() => {
+      setRemaining((prev) => Math.max(prev - 500, 0));
+    }, 500);
+    return () => clearInterval(id);
+  }, [countdownMs]);
+
+  const seconds = Math.ceil(remaining / 1000);
 
   return (
     <div className="pixel-view">
@@ -51,13 +50,10 @@ const Briefing = ({ onStart, onExit }) => {
 
         {/* Countdown */}
         <div className="briefing-countdown">
-          El juego comenzará en {countdown} segundos...
+          {countdownMs
+            ? `El juego comenzará en ${seconds} segundos...`
+            : 'Preparando el inicio...'}
         </div>
-
-        {/* Manual Start */}
-        <button className="pixel-button large" onClick={onStart}>
-          {briefing.startButton}
-        </button>
       </div>
     </div>
   );

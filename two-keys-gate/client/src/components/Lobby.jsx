@@ -3,58 +3,71 @@ import React from 'react';
 const Lobby = ({
   sessionCode,
   myRole,
-  playersConnected,
-  playerAReady,
-  playerBReady,
-  onPlayerReady,
+  playerA,
+  playerB,
+  onClaimRole,
+  onReleaseRole,
+  onToggleReady,
+  onStart,
+  countdownMs = 0,
   onExit,
   mode = 'local'
 }) => {
   const isMultiplayer = mode === 'multi';
+  const myPlayer = myRole === 'A' ? playerA : myRole === 'B' ? playerB : null;
+  const isCountingDown = countdownMs > 0;
+  const aTaken = Boolean(playerA?.sessionId);
+  const bTaken = Boolean(playerB?.sessionId);
+  const bothReady = aTaken && bTaken && playerA?.isReady && playerB?.isReady;
+  const canStart = bothReady && !isCountingDown;
 
-  // Initial lobby (waiting for assignment)
-  if (!myRole) {
+  const renderSeat = (label, player) => {
+    const seatRole = label;
+    const isMine = myRole === seatRole && player?.sessionId;
+    const taken = Boolean(player?.sessionId);
+
+    let status = 'Vacante';
+    if (taken && isMine) status = 'Tú';
+    else if (taken) status = 'Ocupado';
+
+    const action = () => {
+      if (isMine) onReleaseRole?.(seatRole);
+      else if (!taken) onClaimRole?.(seatRole);
+    };
+
+    const actionLabel = isMine ? 'Liberar' : taken ? '—' : 'Tomar asiento';
+    const disabled = taken && !isMine;
+
     return (
-      <div className="lobby-container">
-        <h1 className="lobby-title">
-          {isMultiplayer ? 'CONECTANDO AL SERVIDOR' : 'MODO LOCAL'}
-        </h1>
-        <p className="lobby-subtitle">
-          {isMultiplayer
-            ? 'Esperando conexión con la sala en el servidor...'
-            : 'Abre dos ventanas con la misma URL.'}
-        </p>
-        <div className="lobby-section">
-          <div className="section-header">
-            {isMultiplayer ? 'Sincronizando...' : 'Emparejando...'}
-          </div>
-          <p style={{ fontSize: '10px', color: 'var(--pixel-white)', lineHeight: '1.6' }}>
-            {isMultiplayer
-              ? 'Asignaremos Jugador A / B automáticamente cuando ambos clientes estén conectados.'
-              : 'Este modo no usa servidor ni códigos. El primer navegador será Jugador A, el segundo será Jugador B.'}
-          </p>
+      <div className={`player-item ${player?.isReady ? 'ready' : ''}`}>
+        <div className="player-info">
+          <div className="player-role">JUGADOR {label}</div>
+          <div className="player-name">{status}</div>
         </div>
+        <div className="player-status">{player?.isReady ? '✓ LISTO' : taken ? 'ESPERANDO' : '-'}</div>
+        <button
+          className="pixel-button small"
+          style={{ marginTop: '8px', opacity: disabled ? 0.5 : 1 }}
+          disabled={disabled}
+          onClick={action}
+        >
+          {actionLabel}
+        </button>
       </div>
     );
-  }
+  };
 
-  // Waiting room (room created/joined, waiting for both players)
   return (
     <div className="lobby-container">
       <h1 className="lobby-title">
         SALA DE ESPERA {isMultiplayer ? '(Online)' : '(Local)'}
       </h1>
 
-      {/* Session Code Display */}
+      {/* Game Description */}
       <div className="lobby-section">
-        <div className="section-header">Código</div>
-        <div className="session-code-display">
-          {sessionCode}
-        </div>
-        <p className="session-code-hint">
-          {isMultiplayer
-            ? 'Comparte este código si necesitas que otro cliente se una a la misma sala.'
-            : 'Modo local: sin servidor'}
+        <div className="section-header">Descripción</div>
+        <p className="session-code-hint" style={{ marginTop: '8px' }}>
+          Cooperen para alinear las llaves: cada jugador ve pistas distintas, hablen, tomen asiento A/B, pulsen "Estoy listo" y comiencen. Seleccionen la secuencia correcta en cada nivel para avanzar.
         </p>
       </div>
 
@@ -62,43 +75,37 @@ const Lobby = ({
       <div className="lobby-section">
         <div className="section-header">Jugadores</div>
         <div className="players-list">
-          <div className={`player-item ${playerAReady ? 'ready' : ''}`}>
-            <div className="player-info">
-              <div className="player-role">JUGADOR A</div>
-              <div className="player-name">
-                {myRole === 'A' ? '(Tú)' : playersConnected >= 1 ? 'Conectado' : 'Esperando...'}
-              </div>
-            </div>
-            <div className="player-status">
-              {playerAReady ? '✓ LISTO' : playersConnected >= 1 ? 'ESPERANDO' : '-'}
-            </div>
-          </div>
-
-          <div className={`player-item ${playerBReady ? 'ready' : ''}`}>
-            <div className="player-info">
-              <div className="player-role">JUGADOR B</div>
-              <div className="player-name">
-                {myRole === 'B' ? '(Tú)' : playersConnected >= 2 ? 'Conectado' : 'Esperando...'}
-              </div>
-            </div>
-            <div className="player-status">
-              {playerBReady ? '✓ LISTO' : playersConnected >= 2 ? 'ESPERANDO' : '-'}
-            </div>
-          </div>
+          {renderSeat('A', playerA)}
+          {renderSeat('B', playerB)}
         </div>
       </div>
 
-      {/* Ready Button */}
-      {playersConnected >= 2 && myRole && (
-        <div className="lobby-section">
-          {!((myRole === 'A' && playerAReady) || (myRole === 'B' && playerBReady)) ? (
-            <button className="pixel-button large" onClick={onPlayerReady}>
-              Estoy Listo
-            </button>
-          ) : (
+      {/* Ready / Start */}
+      {myRole && (
+        <div className="lobby-section" style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
+          <button
+            className="pixel-button large"
+            onClick={() => onToggleReady?.(!myPlayer?.isReady)}
+          >
+            {myPlayer?.isReady ? 'Cancelar listo' : 'Estoy listo'}
+          </button>
+
+          {isCountingDown && (
             <div className="waiting-message">
-              Esperando al otro jugador...
+              Iniciando en {Math.ceil(countdownMs / 1000)}s...
             </div>
+          )}
+
+          {!isCountingDown && !bothReady && (
+            <div className="waiting-message">
+              Esperando a que ambos jugadores se sienten y estén listos.
+            </div>
+          )}
+
+          {canStart && (
+            <button className="pixel-button large" onClick={onStart}>
+              Comenzar (5s)
+            </button>
           )}
         </div>
       )}

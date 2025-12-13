@@ -10,6 +10,7 @@ const useColyseus = (serverUrl = 'ws://localhost:3001', roomName = 'two_keys') =
   const [sessionCode, setSessionCode] = useState(null);
   const sessionCodeRef = useRef(null);
   const clientRef = useRef(null);
+  const sessionIdRef = useRef(null);
 
   useEffect(() => {
     if (!clientRef.current) {
@@ -47,10 +48,19 @@ const useColyseus = (serverUrl = 'ws://localhost:3001', roomName = 'two_keys') =
 
   const joinOrCreateRoom = async (options = {}) => {
     try {
-      const joinedRoom = await clientRef.current.joinOrCreate(roomName, {
-        levelId: options.levelId || 1,
-        ...options,
-      });
+      // Prefer joining an existing available room before creating a new one
+      const rooms = await clientRef.current.getAvailableRooms(roomName);
+      const target = rooms.find((r) => r.clients < r.maxClients);
+
+      let joinedRoom;
+      if (target) {
+        joinedRoom = await joinRoom(target.roomId, options);
+      } else {
+        joinedRoom = await clientRef.current.joinOrCreate(roomName, {
+          levelId: options.levelId || 1,
+          ...options,
+        });
+      }
       setupRoom(joinedRoom);
       return joinedRoom;
     } catch (e) {
@@ -81,9 +91,11 @@ const useColyseus = (serverUrl = 'ws://localhost:3001', roomName = 'two_keys') =
   const setupRoom = (joinedRoom) => {
     setRoom(joinedRoom);
     setConnected(true);
+    sessionIdRef.current = joinedRoom.sessionId;
     // set initial state immediately to avoid null renders
     if (joinedRoom.state) {
       setState(joinedRoom.state);
+      thisMaybeSetRoleFromState(joinedRoom.state, joinedRoom.sessionId);
       if (joinedRoom.state.sessionCode && !sessionCodeRef.current) {
         sessionCodeRef.current = joinedRoom.state.sessionCode;
         setSessionCode(joinedRoom.state.sessionCode);
@@ -98,12 +110,24 @@ const useColyseus = (serverUrl = 'ws://localhost:3001', roomName = 'two_keys') =
         sessionCodeRef.current = newState.sessionCode;
         setSessionCode(newState.sessionCode);
       }
+      thisMaybeSetRoleFromState(newState, joinedRoom.sessionId);
     });
 
     // Message handlers
     joinedRoom.onMessage('role_assigned', (data) => {
       console.log('Role assigned:', data.role);
       setMyRole(data.role);
+      if (data.sessionCode) {
+        sessionCodeRef.current = data.sessionCode;
+        setSessionCode(data.sessionCode);
+      }
+    });
+
+    joinedRoom.onMessage('role_denied', (data) => {
+      console.warn('Role denied:', data.role);
+    });
+
+    joinedRoom.onMessage('session_info', (data) => {
       if (data.sessionCode) {
         sessionCodeRef.current = data.sessionCode;
         setSessionCode(data.sessionCode);
@@ -144,6 +168,16 @@ const useColyseus = (serverUrl = 'ws://localhost:3001', roomName = 'two_keys') =
       setConnected(false);
       setMyRole(null);
       setSessionCode(null);
+      sessionIdRef.current = null;
+    }
+  };
+
+  const thisMaybeSetRoleFromState = (newState, currentSessionId) => {
+    if (!newState || !currentSessionId) return;
+    if (newState.playerA?.sessionId === currentSessionId) {
+      setMyRole('A');
+    } else if (newState.playerB?.sessionId === currentSessionId) {
+      setMyRole('B');
     }
   };
 

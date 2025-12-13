@@ -2,115 +2,96 @@
   "levels": [
     {
       "id": 1,
-      "name": "Ecos Emocionales",
-      "nameES": "Ecos Emocionales",
-      "theme": "space_signal",
+      "name": "Puerta de Runas",
+      "nameES": "Puerta de Runas",
+      "theme": "magic_runes",
       "playerA": {
-        "title": "Tu Vista (Jugador A - Receptor de Señal)",
-        "description": "Has recibido una señal del espacio:",
-        "sequence": ["🌟", "👾", "🧊", "🔮"],
-        "instruction": "Comunica esta secuencia a tu compañero."
+        "title": "Tu Vista (Jugador A)",
+        "description": "Ves esta secuencia de runas:",
+        "sequence": ["𓂀", "✦", "☽"],
+        "instruction": "Lee las runas en orden a tu compañero."
       },
       "playerB": {
-        "title": "Tu Información (Jugador B - Traductor)",
-        "description": "Tienes el libro de traducción de símbolos:",
+        "title": "Tu Información (Jugador B)",
+        "description": "Significado de las runas (Símbolo → Emoción):",
         "mapping": {
-          "🌟": "Esperanza",
-          "👾": "Curiosidad",
-          "🧊": "Calma",
-          "🔮": "Misterio",
-          "💥": "Valor",
-          "🌊": "Fluidez"
+          "𓂀": "Calma",
+          "✦": "Esperanza",
+          "☽": "Valentía"
         },
-        "instruction": "Traduce la secuencia que te diga tu equipo."
+        "instruction": "Traduce cada símbolo a la emoción y conserva el orden."
       },
-      "correctAnswer": ["Esperanza", "Curiosidad", "Calma", "Misterio"],
-      "options": ["Esperanza", "Curiosidad", "Calma", "Misterio", "Valor", "Fluidez"],
+      "correctAnswer": ["Calma", "Esperanza", "Valentía"],
+      "options": ["Calma", "Esperanza", "Valentía", "Duda", "Serenidad", "Intriga"],
       "hints": {
-        "generic": "💡 Recuerden: Jugador A ve los símbolos, Jugador B los traduce a emociones. Trabajen paso a paso, símbolo por símbolo.",
-        "specific": "💡 Jugador A: Di en voz alta el primer símbolo (es una estrella ⭐). Jugador B: Busca la estrella en tu tabla. ¿Qué emoción representa?",
-        "stepByStep": "💡 Paso 1: A dice 'Estrella'. B responde 'Esperanza'. Paso 2: A dice 'Alienígena'. B responde 'Curiosidad'. Continúen así con los 4 símbolos."
+        "generic": "💡 Las runas representan emociones, vayan una por una.",
+        "specific": "💡 Piensen qué emociones son 𓂀, ✦ y ☽.",
+        "stepByStep": "💡 1) A dice el primer símbolo, B responde la emoción; 2) repitan con el segundo; 3) luego el tercero."
       },
-      "successMessage": "¡Excelente trabajo en equipo! Han decodificado la señal emocional. La puerta del espacio se ha abierto.",
-      "retryMessage": "Las llaves aún no están alineadas. Revisemos juntos la secuencia."
+      "successMessage": "¡Runas alineadas! El orden de emociones es correcto.",
+      "retryMessage": "El orden o las emociones no coinciden, revisen de nuevo."
     },
     {
       "id": 2,
-      "name": "Caminos de Colores",
-      "nameES": "Caminos de Colores",
+      "name": "Navegación Estelar",
+      "nameES": "Navegación Estelar",
       "theme": "space_navigation",
       "playerA": {
-        "title": "Tu Vista (Jugador A - Piloto de Nave)",
-        "description": "La nave debe seguir esta ruta:",
-        "sequence": ["⬆️", "⬅️", "⬇️", "➡️"],
-        "instruction": "Comunica las direcciones a tu navegante."
+        "title": "Tu Vista (Jugador A)",
+        "description": "Ruta de navegación:",
+        "sequence": ["→", "↑", "←"],
+        "instruction": "Di los rumbos en orden."
       },
       "playerB": {
-        "title": "Tu Información (Jugador B - Navegante)",
-        "description": "Mapa de navegación (Dirección → Color + Forma):",
+        "title": "Tu Información (Jugador B)",
+        "description": "Dirección → Color:",
         "mapping": {
-          "⬆️": "Azul (Diamante)",
-          "⬇️": "Naranja (Círculo)",
-          "⬅️": "Verde (Cuadrado)",
-          "➡️": "Amarillo (Hexágono)"
+          "→": "Azul",
+          "↑": "Verde",
+          "←": "Naranja"
         },
-        "instruction": "Traduce cada dirección al color y forma correctos."
+        "instruction": "Traduce cada rumbo a color y mantén el orden."
       },
-      "correctAnswer": ["Azul (Diamante)", "Verde (Cuadrado)", "Naranja (Círculo)", "Amarillo (Hexágono)"],
-      "options": [
-        { "label": "Azul (Diamante)", "color": "blue", "shape": "diamond", "icon": "◆" },
-        { "label": "Verde (Cuadrado)", "color": "green", "shape": "square", "icon": "■" },
-        { "label": "Naranja (Círculo)", "color": "orange", "shape": "circle", "icon": "●" },
-        { "label": "Amarillo (Hexágono)", "color": "yellow", "shape": "hexagon", "icon": "⬡" }
-      ],
+      "correctAnswer": ["Azul", "Verde", "Naranja"],
+      "options": ["Azul", "Verde", "Naranja", "Rojo", "Morado", "Amarillo"],
       "hints": {
-        "generic": "💡 Jugador A: Lee cada dirección con calma. Jugador B: Tradúcela al color Y la forma. Ambos son importantes.",
-        "specific": "💡 No se preocupen por confundir izquierda y derecha. Jugador A: Usa 'hacia la izquierda de la pantalla' o 'hacia la derecha'.",
-        "stepByStep": "💡 Paso 1: A dice 'Arriba'. B responde 'Azul Diamante'. Paso 2: A dice 'Izquierda'. B responde 'Verde Cuadrado'. Anoten cada uno para no olvidar la secuencia."
+        "generic": "💡 La ruta se arma paso a paso: cada dirección es un color.",
+        "specific": "💡 Empiecen por el primer rumbo y su color, luego sigan.",
+        "stepByStep": "💡 A dice el rumbo, B responde el color y lo anotan en orden."
       },
-      "successMessage": "¡Navegación exitosa! Su nave ha atravesado el campo de asteroides.",
-      "retryMessage": "Las coordenadas no coinciden. Verifiquemos las direcciones juntos."
+      "successMessage": "¡Ruta correcta! La nave sigue en curso.",
+      "retryMessage": "La ruta no coincide, revisen direcciones y colores."
     },
     {
       "id": 3,
-      "name": "Sellos Elementales",
-      "nameES": "Sellos Elementales",
-      "theme": "magic_runes",
+      "name": "Resonancia Elemental",
+      "nameES": "Resonancia Elemental",
+      "theme": "elements",
       "playerA": {
-        "title": "Tu Vista (Jugador A - Lector de Runas)",
-        "description": "Las runas elementales aparecen en orden:",
-        "sequence": ["🔥", "🌊", "🌪️", "🌱"],
-        "instruction": "Describe estos elementos a tu compañero."
+        "title": "Tu Vista (Jugador A)",
+        "description": "Orden de elementos:",
+        "sequence": ["Agua", "Viento", "Fuego"],
+        "instruction": "Di los elementos en orden."
       },
       "playerB": {
-        "title": "Tu Información (Jugador B - Guardián de Sellos)",
-        "description": "Libro de sellos (Elemento → Forma geométrica):",
+        "title": "Tu Información (Jugador B)",
+        "description": "Elemento → Forma:",
         "mapping": {
-          "🔥": "Triángulo",
-          "🌊": "Círculo",
-          "🌪️": "Hexágono",
-          "🌱": "Cuadrado",
-          "⚡": "Diamante",
-          "❄️": "Estrella"
+          "Agua": "Círculo",
+          "Viento": "Triángulo",
+          "Fuego": "Cuadrado"
         },
-        "instruction": "Traduce cada elemento al sello correcto."
+        "instruction": "Traduce cada elemento a su forma, mantén el orden."
       },
-      "correctAnswer": ["Triángulo", "Círculo", "Hexágono", "Cuadrado"],
-      "options": [
-        { "label": "Triángulo", "icon": "▲" },
-        { "label": "Círculo", "icon": "●" },
-        { "label": "Hexágono", "icon": "⬡" },
-        { "label": "Cuadrado", "icon": "■" },
-        { "label": "Diamante", "icon": "◆" },
-        { "label": "Estrella", "icon": "✦" }
-      ],
+      "correctAnswer": ["Círculo", "Triángulo", "Cuadrado"],
+      "options": ["Círculo", "Triángulo", "Cuadrado", "Rombo", "Estrella", "Hexágono"],
       "hints": {
-        "generic": "💡 Jugador A: Lee los elementos en orden. Jugador B: Traduce cada elemento a su forma geométrica.",
-        "specific": "💡 Jugador A: El primer elemento es 'Fuego' 🔥. Jugador B: Busca 🔥 en tu tabla. ¿Qué forma representa?",
-        "stepByStep": "💡 Vamos paso a paso: 1. A dice 'Fuego'. B responde 'Triángulo'. 2. A dice 'Agua'. B responde 'Círculo'. Continúen así con todos los elementos."
+        "generic": "💡 Cada elemento tiene su forma; respeten el orden.",
+        "specific": "💡 Piensen qué forma corresponde a Agua, Viento y Fuego.",
+        "stepByStep": "💡 A dice el elemento, B responde la forma, apunten la secuencia."
       },
-      "successMessage": "¡Los sellos elementales están completos! La puerta ancestral se ha desbloqueado.",
-      "retryMessage": "Los sellos aún no coinciden. Revisemos la secuencia elemental."
+      "successMessage": "¡Resonancia lograda! El orden elemental es correcto.",
+      "retryMessage": "Forma u orden incorrectos, vuelvan a alinear."
     }
   ],
   "briefing": {

@@ -17,7 +17,9 @@ export class ChatMessage extends Schema {
 export class TwoKeysState extends Schema {
   @type('string') sessionCode: string = '';
   @type('number') levelId: number = 1;
-  @type('string') phase: string = 'lobby'; // lobby, briefing, active, sync_confirm, success, retry
+  @type('string') phase: string = 'lobby'; // lobby, briefing/countdown, active, sync_confirm, success, retry
+  @type('number') startAt: number = 0; // epoch ms for countdown target
+  @type('number') countdownMs: number = 0;
 
   @type(PlayerState) playerA = new PlayerState();
   @type(PlayerState) playerB = new PlayerState();

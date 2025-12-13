@@ -1,14 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 
 const SuccessScreen = ({ message, onContinue }) => {
-  useEffect(() => {
-    // Auto-continue after 5 seconds
-    const timer = setTimeout(() => {
-      onContinue();
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [onContinue]);
 
   return (
     <div className="pixel-view">
@@ -34,13 +26,11 @@ const SuccessScreen = ({ message, onContinue }) => {
         </div>
 
         {/* Continue Button */}
-        <button className="pixel-button large" onClick={onContinue}>
-          Volver al Tablero
-        </button>
-
-        <p className="auto-continue-hint">
-          Regresando automáticamente en 5 segundos...
-        </p>
+        {onContinue && (
+          <button className="pixel-button large" onClick={onContinue}>
+            Salir
+          </button>
+        )}
       </div>
     </div>
   );

@@ -12,15 +12,26 @@ const resolveMode = () => {
   if (typeof window !== 'undefined') {
     const urlParams = new URLSearchParams(window.location.search);
     const queryMode = urlParams.get('mode')?.toLowerCase();
-    if (queryMode === 'multi' || queryMode === 'local') {
-      return queryMode;
-    }
+    if (queryMode === 'multi' || queryMode === 'local') return queryMode;
   }
-  const envMode =
-    typeof import.meta !== 'undefined'
-      ? import.meta.env?.VITE_DEFAULT_MODE?.toLowerCase()
-      : undefined;
-  return envMode === 'multi' ? 'multi' : 'local';
+  // Default to multiplayer unless explicitly forced to local
+  return 'multi';
+};
+
+const resolvePreferredRole = () => {
+  if (typeof window === 'undefined') return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const param =
+    urlParams.get('role') ||
+    urlParams.get('player') ||
+    urlParams.get('pref') ||
+    urlParams.get('seat');
+  if (param) return param.toUpperCase();
+
+  const port = window.location.port;
+  if (port === '5174') return 'A';
+  if (port === '5175') return 'B';
+  return null;
 };
 
 const TwoKeysGateView = ({
@@ -31,9 +42,22 @@ const TwoKeysGateView = ({
   myRole,
   sessionCode,
   sendMessage,
+  claimRole,
+  releaseRole,
+  setReady,
+  startCountdown,
   leaveRoom,
 }) => {
   const [showDialog, setShowDialog] = useState(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!state?.startAt) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [state?.startAt]);
+
+  const countdownMs = state?.startAt ? Math.max(state.startAt - now, 0) : 0;
 
   useEffect(() => {
     // placeholder for future effects
@@ -118,9 +142,13 @@ const TwoKeysGateView = ({
             sessionCode={sessionCode}
             myRole={myRole}
             playersConnected={state.playersConnected}
-            playerAReady={state.playerA?.isReady}
-            playerBReady={state.playerB?.isReady}
-            onPlayerReady={() => sendMessage('player_ready')}
+            playerA={state.playerA}
+            playerB={state.playerB}
+            onClaimRole={claimRole}
+            onReleaseRole={releaseRole}
+            onToggleReady={(ready) => setReady(ready)}
+            onStart={startCountdown}
+            countdownMs={countdownMs}
             mode={mode}
             onExit={handleExitConfirm}
           />
@@ -129,7 +157,7 @@ const TwoKeysGateView = ({
       case 'briefing':
         return (
           <Briefing
-            onStart={() => sendMessage('start_game')}
+            countdownMs={countdownMs}
             onExit={handleExitConfirm}
           />
         );
@@ -147,10 +175,13 @@ const TwoKeysGateView = ({
         );
 
       case 'success':
+        // Only show exit on final level
+        const totalLevels = state?.totalLevels || 3;
+        const isFinal = (state?.levelId || 1) >= totalLevels;
         return (
           <SuccessScreen
             message={state.resultMessage}
-            onContinue={handleExitToMainboard}
+            onContinue={isFinal ? handleExitToMainboard : null}
           />
         );
 
@@ -200,18 +231,16 @@ const TwoKeysGateLocal = ({ mode }) => {
 };
 
 const TwoKeysGateMultiplayer = ({ mode, serverUrl }) => {
-  const game = useMultiplayerGame(serverUrl, true);
+  const preferredRole = resolvePreferredRole();
+  const game = useMultiplayerGame(preferredRole);
   return <TwoKeysGateView mode={mode} {...game} />;
 };
 
 const TwoKeysGate = () => {
   const [mode] = useState(resolveMode);
-  const serverUrl =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_COLYSEUS_URL) ||
-    'ws://localhost:3001';
 
   return mode === 'multi'
-    ? <TwoKeysGateMultiplayer mode={mode} serverUrl={serverUrl} />
+    ? <TwoKeysGateMultiplayer mode={mode} />
     : <TwoKeysGateLocal mode={mode} />;
 };
 

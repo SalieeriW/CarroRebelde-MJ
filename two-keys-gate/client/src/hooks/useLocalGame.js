@@ -8,7 +8,9 @@ const HOST_KEY = 'twokeys-local-host';
 const createInitialState = () => ({
   sessionCode: 'LOCAL',
   levelId: 1,
-  phase: 'lobby', // lobby, briefing, active, sync_confirm, success, retry
+  phase: 'lobby', // lobby, briefing (countdown), active, sync_confirm, success, retry
+  startAt: 0,
+  countdownMs: 0,
   playerA: {
     sessionId: '',
     selectedAnswer: [],
@@ -43,7 +45,7 @@ const generateId = () => {
 /**
  * useLocalGame
  * 本地双窗口模拟，不依赖服务器。
- * 打开两个标签页即可自动分配玩家 A / B，状态通过 BroadcastChannel 同步。
+ * 打开两个标签页，手动占位 A/B，状态通过 BroadcastChannel 同步。
  */
 const useLocalGame = () => {
   const [state, setState] = useState(null);
@@ -54,19 +56,23 @@ const useLocalGame = () => {
   const stateRef = useRef(null);
   const hostIdRef = useRef(null);
   const timeoutsRef = useRef([]);
+  const countdownRef = useRef(null);
+  const nextLevelRef = useRef(null);
   const joinRequestedRef = useRef(false);
-  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-  const envPreferredRole =
-    typeof import.meta !== 'undefined'
-      ? import.meta.env?.VITE_DEFAULT_ROLE?.toUpperCase()
-      : undefined;
-  const preferredRole = urlParams.get('player')?.toUpperCase() || envPreferredRole; // 'A' | 'B'
   const clientId = useMemo(() => generateId(), []);
 
   // Helpers
   const clearTimers = () => {
     timeoutsRef.current.forEach((t) => clearTimeout(t));
     timeoutsRef.current = [];
+    if (countdownRef.current) {
+      clearTimeout(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (nextLevelRef.current) {
+      clearTimeout(nextLevelRef.current);
+      nextLevelRef.current = null;
+    }
   };
 
   const pushState = (nextState) => {
@@ -101,24 +107,30 @@ const useLocalGame = () => {
     return hostIdRef.current === clientId;
   };
 
-  const assignRole = (draft, joinerId) => {
-    // If URL param fixes role, honor it
-    if (preferredRole === 'A' && !draft.playerA.sessionId) {
-      draft.playerA.sessionId = joinerId;
-    } else if (preferredRole === 'B' && !draft.playerB.sessionId) {
-      draft.playerB.sessionId = joinerId;
-    } else if (!draft.playerA.sessionId) {
-      draft.playerA.sessionId = joinerId;
-    } else if (!draft.playerB.sessionId) {
-      draft.playerB.sessionId = joinerId;
-    }
-    draft.playersConnected =
-      (draft.playerA.sessionId ? 1 : 0) + (draft.playerB.sessionId ? 1 : 0);
-  };
-
   const resetConfirmations = (draft) => {
     draft.playerA.confirmedAt = 0;
     draft.playerB.confirmedAt = 0;
+  };
+
+  const cancelCountdown = (draft) => {
+    draft.startAt = 0;
+    draft.countdownMs = 0;
+    if (draft.phase === 'briefing') {
+      draft.phase = 'lobby';
+    }
+    if (countdownRef.current) {
+      clearTimeout(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (nextLevelRef.current) {
+      clearTimeout(nextLevelRef.current);
+      nextLevelRef.current = null;
+    }
+  };
+
+  const recalcPlayersConnected = (draft) => {
+    draft.playersConnected =
+      (draft.playerA.sessionId ? 1 : 0) + (draft.playerB.sessionId ? 1 : 0);
   };
 
   const checkAnswer = () => {
@@ -187,21 +199,9 @@ const useLocalGame = () => {
 
     switch (action) {
       case 'join': {
-        assignRole(draft, sender);
-        // 两人到齐就直接进入 briefing -> active，免点击阻塞
-        if (draft.playersConnected >= 2) {
-          draft.playerA.isReady = true;
-          draft.playerB.isReady = true;
-          draft.phase = 'briefing';
-          pushState(draft);
-          const t = setTimeout(() => {
-            const c = stateRef.current;
-            if (c) pushState({ ...c, phase: 'active' });
-          }, 500);
-          timeoutsRef.current.push(t);
-        } else {
-          pushState(draft);
-        }
+        // No auto seat; just sync state
+        recalcPlayersConnected(draft);
+        pushState(draft);
         break;
       }
       case 'leave': {
@@ -211,34 +211,80 @@ const useLocalGame = () => {
         if (draft.playerB.sessionId === sender) {
           draft.playerB = { ...createInitialState().playerB };
         }
-        draft.playersConnected =
-          (draft.playerA.sessionId ? 1 : 0) + (draft.playerB.sessionId ? 1 : 0);
+        recalcPlayersConnected(draft);
+        cancelCountdown(draft);
+        pushState(draft);
+        break;
+      }
+      case 'claim_role': {
+        const role = (payload.role || '').toUpperCase();
+        if (role !== 'A' && role !== 'B') break;
+        const target = role === 'A' ? draft.playerA : draft.playerB;
+        const other = role === 'A' ? draft.playerB : draft.playerA;
+
+        // Deny if seat taken by another client
+        if (target.sessionId && target.sessionId !== sender) break;
+
+        // Free other seat if owned by same client
+        if (other.sessionId === sender) {
+          Object.assign(other, { ...createInitialState()[role === 'A' ? 'playerB' : 'playerA'] });
+        }
+
+        Object.assign(target, { ...createInitialState()[role === 'A' ? 'playerA' : 'playerB'] });
+        target.sessionId = sender;
+        target.role = role;
+        recalcPlayersConnected(draft);
+        cancelCountdown(draft);
+        pushState(draft);
+        break;
+      }
+      case 'release_role': {
+        const role = (payload.role || '').toUpperCase();
+        if (role === 'A' && draft.playerA.sessionId === sender) {
+          draft.playerA = { ...createInitialState().playerA };
+        }
+        if (role === 'B' && draft.playerB.sessionId === sender) {
+          draft.playerB = { ...createInitialState().playerB };
+        }
+        recalcPlayersConnected(draft);
+        cancelCountdown(draft);
         pushState(draft);
         break;
       }
       case 'player_ready': {
         const role = payload.role;
         const target = role === 'A' ? draft.playerA : draft.playerB;
-        target.isReady = true;
-        // 双方准备好 -> 进入 briefing，短暂后自动 active
-        if (draft.playerA.isReady && draft.playerB.isReady) {
-          draft.phase = 'briefing';
-          pushState(draft);
-          const t = setTimeout(() => {
-            const c = stateRef.current;
-            if (c) pushState({ ...c, phase: 'active' });
-          }, 500);
-          timeoutsRef.current.push(t);
-        } else {
-          pushState(draft);
+        if (target.sessionId !== sender) break;
+        target.isReady = payload.ready === false ? false : true;
+        if (!target.isReady) {
+          cancelCountdown(draft);
         }
+        pushState(draft);
         break;
       }
-      case 'start_game': {
-        if (draft.phase === 'briefing') {
-          draft.phase = 'active';
-          pushState(draft);
+      case 'start_request': {
+        const aReady = draft.playerA.sessionId && draft.playerA.isReady;
+        const bReady = draft.playerB.sessionId && draft.playerB.isReady;
+        if (!aReady || !bReady) break;
+        draft.phase = 'briefing';
+        draft.startAt = Date.now() + 5000;
+        draft.countdownMs = 5000;
+        pushState(draft);
+        if (countdownRef.current) {
+          clearTimeout(countdownRef.current);
         }
+        countdownRef.current = setTimeout(() => {
+          const c = stateRef.current;
+          if (c) {
+            pushState({
+              ...c,
+              phase: 'active',
+              startAt: 0,
+              countdownMs: 0,
+            });
+          }
+          countdownRef.current = null;
+        }, 5000);
         break;
       }
       case 'select_answer': {
@@ -399,6 +445,10 @@ const useLocalGame = () => {
     connected,
     myRole,
     sessionCode: state?.sessionCode || 'LOCAL',
+    claimRole: (role) => sendAction('claim_role', { role }),
+    releaseRole: (role) => sendAction('release_role', { role }),
+    setReady: (ready = true) => sendAction('player_ready', { ready }),
+    startCountdown: () => sendAction('start_request'),
     sendMessage,
     leaveRoom,
   };
