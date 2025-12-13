@@ -737,3 +737,130 @@ body {
     top: 20px;
   }
 }
+
+.wordle-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+}
+
+.role-indicator {
+  font-family: "Press Start 2P", monospace;
+  font-size: 14px;
+  color: #f9d71c;
+  margin-bottom: 10px;
+}
+
+.word-display {
+  font-family: "Press Start 2P", monospace;
+  font-size: 24px;
+  color: #00ff41;
+  padding: 20px;
+  background: rgba(15, 15, 30, 0.8);
+  border: 3px solid #00ff41;
+}
+
+.guesses-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.guess-row {
+  display: flex;
+  gap: 8px;
+}
+
+.letter-box {
+  width: 60px;
+  height: 60px;
+  border: 3px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Press Start 2P", monospace;
+  font-size: 24px;
+  background: #1a1a2e;
+}
+
+.letter-box.correct {
+  background: #00ff41;
+  color: #000;
+  border-color: #00ff41;
+}
+
+.letter-box.present {
+  background: #f9d71c;
+  color: #000;
+  border-color: #f9d71c;
+}
+
+.letter-box.absent {
+  background: #333;
+  color: #666;
+}
+
+.letter-box.current {
+  border-color: #f9d71c;
+  animation: pulse 1s infinite;
+}
+
+.wordle-keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.keyboard-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.key-button {
+  font-family: "Press Start 2P", monospace;
+  font-size: 12px;
+  padding: 12px 8px;
+  background: #1a1a2e;
+  border: 2px solid #00ff41;
+  color: #00ff41;
+  cursor: pointer;
+  min-width: 40px;
+}
+
+.key-button:hover:not(:disabled) {
+  background: #00ff41;
+  color: #000;
+}
+
+.key-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.key-button.submit {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.instructions {
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
+  color: #aaa;
+  text-align: center;
+  margin-top: 20px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    border-color: #f9d71c;
+  }
+  50% {
+    border-color: #00ff41;
+  }
+}
