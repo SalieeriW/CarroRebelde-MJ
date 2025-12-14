@@ -1,0 +1,29 @@
+# --- Etapa 1: Construcción (Build) ---
+FROM node:18-alpine as build
+WORKDIR /app
+
+# Copia e instala dependencias
+COPY package*.json ./
+RUN npm install
+
+# Copia el código fuente y variables de entorno (para la build)
+COPY .env .
+COPY . ./
+
+# Construye la aplicación React (Vite/CRA asumen 'build' o 'dist')
+# Asumiendo que usas Vite con 'npm run build'
+RUN npm run build 
+
+# --- Etapa 2: Ejecución (Serve con Nginx) ---
+FROM nginx:alpine
+# Copia la configuración de Nginx predeterminada
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copia la aplicación construida al directorio de servicio de Nginx
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Puerto de Nginx
+EXPOSE 80
+
+# Comando para iniciar Nginx
+CMD ["nginx", "-g", "daemon off;"]

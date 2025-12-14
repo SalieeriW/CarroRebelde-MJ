@@ -1,0 +1,33 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.server
+    container_name: carro-rebelde-server
+    # Colyseus default port
+    ports:
+      - "2567:2567"
+    environment:
+      NODE_ENV: production
+    networks:
+      - game-network
+    restart: always
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.client
+    container_name: carro-rebelde-client
+    # Web client port
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+    networks:
+      - game-network
+    # El cliente web se ejecuta con Nginx, no necesita reinicio si falla la conexión
+    restart: on-failure
+
+networks:
+  game-network:
+    driver: bridge

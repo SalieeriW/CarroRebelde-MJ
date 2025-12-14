@@ -2,19 +2,65 @@ import { useEffect, useRef, useState } from "react";
 import "../../styles/game.css";
 
 /**
- * RopeCoopGame - Real Elastic Rope Physics
- * - Player1: WASD + Space (hold to charge jump)
- * - Player2: Arrow keys + Enter (hold to charge jump)
- * - Rope: Continuous elastic physics with dead zone when players are close
- * - Platforms: Full collision detection (top, bottom, sides)
- * - World bounds: Collision from all directions
- * - Gravity: Pulls players down
- * - Jump: Charge power by holding jump key
+ * RopeCoopGame - Online 2 devices
+ * - Each device controls only 1 player
+ * - Host simulates physics and broadcasts state via onGameUpdate
+ * - Clients send input via onPlayerAction
+ *
+ * Controls (both players use same keys scheme on their own device):
+ * - Left/Right: A/D or ArrowLeft/ArrowRight (we accept both)
+ * - Jump: Space or Enter (hold to charge, release to jump)
  */
 
-export default function RopeCoopGame({ gameData, onGameUpdate }) {
+export default function RopeCoopGame({
+  gameData,
+  onGameUpdate,
+  onPlayerAction,
+  mySessionId,
+  players,
+  myRole,
+}) {
   const canvasRef = useRef(null);
   const [gameWon, setGameWon] = useState(false);
+
+  // Local input state (what THIS device is pressing)
+  const inputRef = useRef({
+    left: false,
+    right: false,
+    charging: false,
+    jumpReleased: false, // edge event
+  });
+
+  // CRITICAL FIX: Ref to hold the latest gameData prop
+  const gameDataRef = useRef(gameData);
+
+  // Decide local player slot (p1 or p2) based on join order
+  const isHost = myRole === "player1"; //
+
+  // Throttle sending input (avoid spamming)
+  const lastSendRef = useRef(0);
+  const sendMyInput = () => {
+    // Si no somos p1 o p2 (rol asignado), no enviamos nada
+    if (myRole !== "player1" && myRole !== "player2") return;
+
+    const now = performance.now();
+    if (now - lastSendRef.current < 40) return; // ~25fps
+    lastSendRef.current = now;
+
+    onPlayerAction?.({
+      type: "minigame4_input",
+      sessionId: mySessionId,
+      payload: {
+        left: inputRef.current.left,
+        right: inputRef.current.right,
+        charging: inputRef.current.charging,
+        jumpReleased: inputRef.current.jumpReleased,
+      },
+    });
+
+    // consume edge
+    inputRef.current.jumpReleased = false;
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -40,24 +86,24 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
     const world = {
       w: () => canvas.width / DPR,
       h: () => canvas.height / DPR,
-      gravity: 0.65, // Slightly increased for shorter jumps
+      gravity: 0.65,
       airFriction: 0.92,
       groundFriction: 0.8,
       accel: 0.8,
       maxSpeed: 7,
       jumpChargeRate: 1.5,
-      maxJumpPower: 20, // Further reduced for shorter jumps
+      maxJumpPower: 20,
 
-      // Rope physics (MODE 2)
-      restLength: 120, // Shorter rope for closer gameplay
-      ropeK: 0.06, // Increased for tighter, more realistic rope
-      ropeDamping: 0.35, // Increased damping for less oscillation
-      maxRopeForce: 1.2, // Slightly reduced max force
-      massFactor: 0.5, // Adjusted mass transmission
+      // Physics parameters
+      restLength: 120,
+      ropeK: 0.1,
+      ropeDamping: 0.2,
+      maxRopeForce: 1.8,
+      massFactor: 0.5,
     };
 
     /* =========================
-       ENTITIES
+       ENTITIES (host simulates)
     ========================= */
     const makePlayer = (x, y, color) => ({
       x,
@@ -71,55 +117,19 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
       color,
     });
 
-    const p1 = makePlayer(140, 420, "#fb7185");
-    const p2 = makePlayer(260, 420, "#22d3ee");
-
-    const goal = { x: () => world.w() - 80, y: () => 80, r: 24 };
-
-    const platforms = [
-      { x: 0, y: world.h() - 30, w: world.w(), h: 30 },
-      { x: 120, y: world.h() - 120, w: 120, h: 18 },
-      { x: 300, y: world.h() - 200, w: 120, h: 18 },
-      { x: 520, y: world.h() - 280, w: 120, h: 18 },
-      { x: 700, y: world.h() - 360, w: 140, h: 18 },
-    ];
-
-    /* =========================
-       INPUT
-    ========================= */
-    const keys = new Set();
-
-    const keyDown = (e) => {
-      const k = e.key.toLowerCase();
-      if (
-        [
-          "w",
-          "a",
-          "s",
-          "d",
-          " ",
-          "enter",
-          "arrowleft",
-          "arrowright",
-          "arrowup",
-        ].includes(k)
-      ) {
-        e.preventDefault();
-      }
-      keys.add(k);
-      if (k === " " && p1.onGround) p1.charging = true;
-      if (k === "enter" && p2.onGround) p2.charging = true;
+    // Host local simulation state
+    const sim = {
+      p1: makePlayer(140, 420, "#fb7185"),
+      p2: makePlayer(260, 420, "#22d3ee"),
+      goal: { x: () => world.w() - 80, y: () => 80, r: 24 },
+      platforms: [
+        { x: 0, y: () => world.h() - 30, w: () => world.w(), h: 30 },
+        { x: 120, y: () => world.h() - 120, w: 120, h: 18 },
+        { x: 300, y: () => world.h() - 200, w: 120, h: 18 },
+        { x: 520, y: () => world.h() - 280, w: 120, h: 18 },
+        { x: 700, y: () => world.h() - 360, w: 140, h: 18 },
+      ],
     };
-
-    const keyUp = (e) => {
-      const k = e.key.toLowerCase();
-      keys.delete(k);
-      if (k === " " && p1.charging) jump(p1);
-      if (k === "enter" && p2.charging) jump(p2);
-    };
-
-    window.addEventListener("keydown", keyDown, { passive: false });
-    window.addEventListener("keyup", keyUp);
 
     /* =========================
        HELPERS
@@ -134,27 +144,23 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
       p.onGround = false;
     }
 
-    function move(p, left, right) {
-      if (keys.has(left)) p.vx -= world.accel;
-      if (keys.has(right)) p.vx += world.accel;
+    function move(p, input) {
+      if (input?.left) p.vx -= world.accel;
+      if (input?.right) p.vx += world.accel;
       p.vx = clamp(p.vx, -world.maxSpeed, world.maxSpeed);
     }
 
     function insideGoal(p) {
-      const dx = p.x - goal.x();
-      const dy = p.y - goal.y();
-      return Math.hypot(dx, dy) < goal.r;
+      const dx = p.x - sim.goal.x();
+      const dy = p.y - sim.goal.y();
+      return Math.hypot(dx, dy) < sim.goal.r;
     }
 
-    /* =========================
-       ROPE — MODE 2 (REAL ELASTIC)
-    ========================= */
     function applyElasticRope(a, b) {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dist = Math.max(1, len(dx, dy));
 
-      // 🔥 NO aplicar fuerza si están muy cerca (evita comportamientos extraños)
       if (dist < world.restLength * 0.3) return;
 
       const nx = dx / dist;
@@ -163,13 +169,13 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
       const stretch = dist - world.restLength;
 
       const rvx = b.vx - a.vx;
-      const rvy = b.vy - a.vy;
+      const rvy = b.vy - a.y;
       const relVel = rvx * nx + rvy * ny;
 
+      // Fuerza de Hooke (restauración) - Amortiguación (disipación)
       let force = world.ropeK * stretch - world.ropeDamping * relVel;
       force = clamp(force, -world.maxRopeForce, world.maxRopeForce);
 
-      // fuerza limitada + masa -> NO ARRASTRE
       a.vx += nx * force * world.massFactor;
       a.vy += ny * force * world.massFactor;
       b.vx -= nx * force * world.massFactor;
@@ -178,46 +184,35 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
 
     function collidePlatform(p) {
       p.onGround = false;
-      for (const pl of platforms) {
-        if (
-          p.x + p.r > pl.x &&
-          p.x - p.r < pl.x + pl.w &&
-          p.y + p.r > pl.y &&
-          p.y - p.r < pl.y + pl.h
-        ) {
-          // Calcular overlap en cada eje
-          const overlapX = Math.min(
-            p.x + p.r - pl.x,
-            pl.x + pl.w - (p.x - p.r)
-          );
-          const overlapY = Math.min(
-            p.y + p.r - pl.y,
-            pl.y + pl.h - (p.y - p.r)
-          );
 
-          // Resolver colisión en el eje con menor overlap
+      for (const pl of sim.platforms) {
+        const plX = pl.x;
+        const plY = typeof pl.y === "function" ? pl.y() : pl.y;
+        const plW = typeof pl.w === "function" ? pl.w() : pl.w;
+        const plH = pl.h;
+
+        if (
+          p.x + p.r > plX &&
+          p.x - p.r < plX + plW &&
+          p.y + p.r > plY &&
+          p.y - p.r < plY + plH
+        ) {
+          const overlapX = Math.min(p.x + p.r - plX, plX + plW - (p.x - p.r));
+          const overlapY = Math.min(p.y + p.r - plY, plY + plH - (p.y - p.r));
+
           if (overlapX < overlapY) {
-            // Colisión horizontal
-            if (p.x < pl.x + pl.w / 2) {
-              // Desde la izquierda
-              p.x = pl.x - p.r;
-            } else {
-              // Desde la derecha
-              p.x = pl.x + pl.w + p.r;
-            }
-            p.vx *= -0.3; // Rebote con pérdida de energía
+            if (p.x < plX + plW / 2) p.x = plX - p.r;
+            else p.x = plX + plW + p.r;
+            p.vx *= -0.3;
           } else {
-            // Colisión vertical
-            if (p.y < pl.y + pl.h / 2) {
-              // Desde arriba (aterrizando)
-              p.y = pl.y - p.r;
+            if (p.y < plY + plH / 2) {
+              p.y = plY - p.r;
               p.vy = 0;
               p.onGround = true;
               p.vx *= world.groundFriction;
             } else {
-              // Desde abajo (golpeando la plataforma por debajo)
-              p.y = pl.y + pl.h + p.r;
-              p.vy *= -0.3; // Rebote hacia abajo
+              p.y = plY + plH + p.r;
+              p.vy *= -0.3;
             }
           }
         }
@@ -229,75 +224,199 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
       const W = world.w();
       const H = world.h();
 
-      // Izquierda
       if (p.x - p.r < padding) {
         p.x = padding + p.r;
         p.vx *= -0.3;
       }
-      // Derecha
       if (p.x + p.r > W - padding) {
         p.x = W - padding - p.r;
         p.vx *= -0.3;
       }
-      // Arriba (colisión desde arriba)
       if (p.y - p.r < padding) {
         p.y = padding + p.r;
         p.vy *= -0.3;
       }
-      // Abajo (colisión desde abajo - como techo)
       if (p.y + p.r > H - padding) {
         p.y = H - padding - p.r;
         p.vy *= -0.3;
-        // Nota: en este caso no ponemos onGround=true porque es el borde inferior
       }
     }
 
     /* =========================
-       LOOP
+       INPUT (LOCAL DEVICE)
     ========================= */
-    function step() {
-      move(p1, "a", "d");
-      move(p2, "arrowleft", "arrowright");
+    const keyDown = (e) => {
+      const k = e.key.toLowerCase();
+      if (
+        [
+          "a",
+          "d",
+          "arrowleft",
+          "arrowright",
+          " ",
+          "enter",
+          "arrowup",
+          "w",
+        ].includes(k)
+      ) {
+        e.preventDefault();
+      }
 
-      if (p1.charging)
-        p1.jumpPower = Math.min(
-          p1.jumpPower + world.jumpChargeRate,
+      // Accept both schemes so it's easier
+      if (k === "a" || k === "arrowleft") inputRef.current.left = true;
+      if (k === "d" || k === "arrowright") inputRef.current.right = true;
+
+      // Jump charge keys
+      if (k === " " || k === "enter") inputRef.current.charging = true;
+
+      sendMyInput();
+    };
+
+    const keyUp = (e) => {
+      const k = e.key.toLowerCase();
+
+      if (k === "a" || k === "arrowleft") inputRef.current.left = false;
+      if (k === "d" || k === "arrowright") inputRef.current.right = false;
+
+      if (k === " " || k === "enter") {
+        inputRef.current.charging = false;
+        inputRef.current.jumpReleased = true; // edge
+      }
+
+      sendMyInput();
+    };
+
+    window.addEventListener("keydown", keyDown, { passive: false });
+    window.addEventListener("keyup", keyUp);
+
+    /* =========================
+       NETWORK STATE (authoritative)
+    ========================= */
+
+    // CRITICAL FIX: Update the ref with the latest prop value
+    gameDataRef.current = gameData;
+
+    const getRemoteInput = (sessionId) => {
+      // FIX: Use the ref for the latest network state
+      return gameDataRef.current?.m4?.inputs?.[sessionId] || null;
+    };
+
+    const getSessionIdsByRole = () => {
+      const p1 = (players || []).find((p) => p.role === "player1")?.sessionId;
+      const p2 = (players || []).find((p) => p.role === "player2")?.sessionId;
+      return [p1, p2];
+    };
+
+    // Obtenemos los SIDs al inicio del efecto para determinar el slot local
+    const [sid1, sid2] = getSessionIdsByRole();
+    const mySlot =
+      sid1 === mySessionId ? "p1" : sid2 === mySessionId ? "p2" : null;
+
+    /* =========================
+       HOST SIMULATION LOOP
+    ========================= */
+    function hostStep() {
+      // Re-obtener los SIDs si es necesario, pero para el mapeo de entrada con players es mejor
+      // usar el `sid1` y `sid2` calculados si `players` se actualiza.
+      const [currentSid1, currentSid2] = getSessionIdsByRole();
+
+      // Input 1: Usa input local si eres sid1, si no, usa el remoto. Si sid1 es nulo, usa vacío.
+      const inp1 =
+        (currentSid1 === mySessionId ? inputRef.current : null) ||
+        (currentSid1 ? getRemoteInput(currentSid1) : null) ||
+        {};
+
+      // Input 2: Usa input local si eres sid2, si no, usa el remoto. Si sid2 es nulo, usa vacío.
+      const inp2 =
+        (currentSid2 === mySessionId ? inputRef.current : null) ||
+        (currentSid2 ? getRemoteInput(currentSid2) : null) ||
+        {};
+
+      // Apply horizontal movement from inputs
+      move(sim.p1, inp1);
+      move(sim.p2, inp2);
+
+      // Charge jump
+      if (inp1?.charging && sim.p1.onGround) sim.p1.charging = true;
+      if (inp2?.charging && sim.p2.onGround) sim.p2.charging = true;
+
+      if (sim.p1.charging)
+        sim.p1.jumpPower = Math.min(
+          sim.p1.jumpPower + world.jumpChargeRate,
           world.maxJumpPower
         );
-      if (p2.charging)
-        p2.jumpPower = Math.min(
-          p2.jumpPower + world.jumpChargeRate,
+      if (sim.p2.charging)
+        sim.p2.jumpPower = Math.min(
+          sim.p2.jumpPower + world.jumpChargeRate,
           world.maxJumpPower
         );
 
-      p1.vy += world.gravity;
-      p2.vy += world.gravity;
+      // Release jump edge
+      if (inp1?.jumpReleased && sim.p1.charging) jump(sim.p1);
+      if (inp2?.jumpReleased && sim.p2.charging) jump(sim.p2);
 
-      applyElasticRope(p1, p2);
+      // Gravity
+      sim.p1.vy += world.gravity;
+      sim.p2.vy += world.gravity;
 
-      [p1, p2].forEach((p) => {
+      // Rope
+      applyElasticRope(sim.p1, sim.p2);
+
+      // Integrate + collisions
+      [sim.p1, sim.p2].forEach((p) => {
         p.vx *= world.airFriction;
         p.vy *= world.airFriction;
         p.x += p.vx;
         p.y += p.vy;
         collidePlatform(p);
         keepInBounds(p);
+        // if in air, stop charging automatically
+        if (!p.onGround && p.charging) p.charging = false;
       });
 
-      if (!gameWon && insideGoal(p1) && insideGoal(p2)) {
+      const won = insideGoal(sim.p1) && insideGoal(sim.p2);
+      if (won && !gameWon) {
         setGameWon(true);
-        onGameUpdate?.({ ...(gameData || {}), ropeGameWon: true });
       }
+
+      // Broadcast authoritative state
+      onGameUpdate?.({
+        ...(gameDataRef.current || {}), // Use the ref when building the next state
+        m4: {
+          ...(gameDataRef.current?.m4 || {}), // Use the ref when building the next state
+          state: {
+            // Enviamos un clon de los objetos para evitar mutaciones inesperadas
+            p1: { ...sim.p1 },
+            p2: { ...sim.p2 },
+            won,
+          },
+        },
+      });
     }
 
-    function draw() {
+    /* =========================
+       DRAW (EVERY CLIENT)
+    ========================= */
+    function drawFromState() {
+      // FIX: Use the ref for the latest network state
+      const st = gameDataRef.current?.m4?.state;
+
+      // Si host, dibujar desde la simulación local; si cliente, dibujar desde el estado remoto
+      const p1 = isHost ? sim.p1 : st?.p1 || sim.p1;
+      const p2 = isHost ? sim.p2 : st?.p2 || sim.p2;
+      const won = Boolean(isHost ? gameWon : st?.won);
+
       ctx.clearRect(0, 0, world.w(), world.h());
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(0, 0, world.w(), world.h());
 
       // platforms
       ctx.fillStyle = "#374151";
-      platforms.forEach((p) => ctx.fillRect(p.x, p.y, p.w, p.h));
+      sim.platforms.forEach((p) => {
+        const y = typeof p.y === "function" ? p.y() : p.y;
+        const w = typeof p.w === "function" ? p.w() : p.w;
+        ctx.fillRect(p.x, y, w, p.h);
+      });
 
       // rope
       ctx.strokeStyle = "#38bdf8";
@@ -309,8 +428,8 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
 
       // goal
       ctx.beginPath();
-      ctx.arc(goal.x(), goal.y(), goal.r, 0, Math.PI * 2);
-      ctx.fillStyle = gameWon ? "#22c55e" : "#fbbf24";
+      ctx.arc(sim.goal.x(), sim.goal.y(), sim.goal.r, 0, Math.PI * 2);
+      ctx.fillStyle = won ? "#22c55e" : "#fbbf24";
       ctx.fill();
 
       // players
@@ -319,16 +438,50 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
         ctx.fill();
+
+        // Indicador visual para el jugador controlado localmente
+        const pSlot = p === p1 ? "p1" : "p2";
+        if (pSlot === mySlot) {
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
       });
+
+      // HUD
+      ctx.fillStyle = "#e5e7eb";
+      ctx.font = "12px monospace";
+      ctx.fillText(isHost ? "HOST (simulating)" : "CLIENT", 12, 18);
+      ctx.fillText(`Controlling: ${mySlot || "Waiting..."}`, 12, 34);
     }
 
     let raf;
-    const loop = () => {
-      step();
-      draw();
+    let lastHostTick = 0;
+
+    const loop = (t) => {
+      // Host sim at fixed-ish rate
+      if (isHost) {
+        if (t - lastHostTick > 16) {
+          lastHostTick = t;
+          hostStep();
+        }
+      } else {
+        // Non-host: keep sending input periodically while keys held
+        if (
+          inputRef.current.left ||
+          inputRef.current.right ||
+          inputRef.current.charging ||
+          inputRef.current.jumpReleased
+        ) {
+          sendMyInput();
+        }
+      }
+
+      drawFromState();
       raf = requestAnimationFrame(loop);
     };
-    loop();
+
+    raf = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(raf);
@@ -336,17 +489,25 @@ export default function RopeCoopGame({ gameData, onGameUpdate }) {
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
     };
-  }, [gameWon, gameData, onGameUpdate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    onGameUpdate,
+    onPlayerAction,
+    mySessionId,
+    players,
+    myRole,
+    gameWon,
+    // gameData removed from dependencies. Access via gameDataRef.current
+  ]);
 
   return (
     <div className="pixel-view">
-      <div className="view-title">MINIGAME — Cuerda Elástica Real</div>
+      <div className="view-title">MINIGAME 4 — Rope Coop (Online)</div>
       <canvas ref={canvasRef} className="driver-canvas" />
-      <p>P1: WASD + ESPACIO | P2: Flechas + ENTER</p>
       <p>
-        Las plataformas tienen colisión completa - ¡no puedes pasar por debajo!
+        Tu dispositivo controla 1 jugador. Teclas: A/D o ←/→, salto: Space/Enter
       </p>
-      {gameWon && <p>¡Victoria cooperativa!</p>}
+      {gameData?.m4?.state?.won && <p>¡Victoria cooperativa!</p>}
     </div>
   );
 }

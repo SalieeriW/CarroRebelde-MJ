@@ -1,0 +1,21 @@
+FROM node:18-alpine AS server-build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm install
+COPY . /app
+# Compilar los archivos .ts a .js en la carpeta dist/
+RUN npx tsc
+
+# PRODUCTION STAGE (Solo para ejecutar la aplicación compilada)
+FROM node:18-alpine AS server-stage-2
+WORKDIR /app
+# Copiar solo el código compilado (dist) y los archivos de ejecución
+COPY --from=server-build /app/dist ./dist
+COPY --from=server-build /app/package.json ./package.json
+COPY --from=server-build /app/node_modules ./node_modules
+
+EXPOSE 2567
+
+# Comando de inicio: Usar Node para ejecutar explícitamente el archivo .js compilado
+# ESTA ES LA CORRECCIÓN CLAVE
+CMD ["node", "dist/index.js"]
