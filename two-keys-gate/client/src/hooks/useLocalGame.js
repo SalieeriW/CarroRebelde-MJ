@@ -33,6 +33,7 @@ const createInitialState = () => ({
   resultSuccess: false,
   chatMessages: [],
   playersConnected: 0,
+  exitRequests: { A: false, B: false },
 });
 
 const generateId = () => {
@@ -205,11 +206,22 @@ const useLocalGame = () => {
         break;
       }
       case 'leave': {
+        const leftRoles = [];
         if (draft.playerA.sessionId === sender) {
           draft.playerA = { ...createInitialState().playerA };
+          leftRoles.push('A');
         }
         if (draft.playerB.sessionId === sender) {
           draft.playerB = { ...createInitialState().playerB };
+          leftRoles.push('B');
+        }
+        draft.exitRequests = { A: false, B: false };
+        if (leftRoles.length) {
+          const label = leftRoles.length === 2 ? 'Los jugadores A y B' : `El jugador ${leftRoles[0]}`;
+          draft.chatMessages = [
+            ...(draft.chatMessages || []),
+            { role: 'system', text: `${label} salió de la sala.`, timestamp: Date.now() },
+          ].slice(-20);
         }
         recalcPlayersConnected(draft);
         cancelCountdown(draft);
@@ -233,6 +245,7 @@ const useLocalGame = () => {
         Object.assign(target, { ...createInitialState()[role === 'A' ? 'playerA' : 'playerB'] });
         target.sessionId = sender;
         target.role = role;
+        draft.exitRequests = { ...draft.exitRequests, [role]: false };
         recalcPlayersConnected(draft);
         cancelCountdown(draft);
         pushState(draft);
@@ -242,9 +255,19 @@ const useLocalGame = () => {
         const role = (payload.role || '').toUpperCase();
         if (role === 'A' && draft.playerA.sessionId === sender) {
           draft.playerA = { ...createInitialState().playerA };
+          draft.chatMessages = [
+            ...(draft.chatMessages || []),
+            { role: 'system', text: 'El jugador A salió de la sala.', timestamp: Date.now() },
+          ].slice(-20);
+          draft.exitRequests.A = false;
         }
         if (role === 'B' && draft.playerB.sessionId === sender) {
           draft.playerB = { ...createInitialState().playerB };
+          draft.chatMessages = [
+            ...(draft.chatMessages || []),
+            { role: 'system', text: 'El jugador B salió de la sala.', timestamp: Date.now() },
+          ].slice(-20);
+          draft.exitRequests.B = false;
         }
         recalcPlayersConnected(draft);
         cancelCountdown(draft);
@@ -328,6 +351,28 @@ const useLocalGame = () => {
         pushState(draft);
         break;
       }
+      case 'request_exit': {
+        const role = (payload.role || '').toUpperCase();
+        if (role !== 'A' && role !== 'B') break;
+        draft.exitRequests = { ...draft.exitRequests, [role]: true };
+        draft.chatMessages = [
+          ...(draft.chatMessages || []),
+          { role: 'system', text: `El jugador ${role} quiere abandonar. Esperando confirmación del otro jugador.`, timestamp: Date.now() },
+        ].slice(-20);
+        pushState(draft);
+        break;
+      }
+      case 'cancel_exit': {
+        const role = (payload.role || '').toUpperCase();
+        if (role !== 'A' && role !== 'B') break;
+        draft.exitRequests = { ...draft.exitRequests, [role]: false };
+        draft.chatMessages = [
+          ...(draft.chatMessages || []),
+          { role: 'system', text: `El jugador ${role} decidió seguir jugando.`, timestamp: Date.now() },
+        ].slice(-20);
+        pushState(draft);
+        break;
+      }
       default:
         break;
     }
@@ -342,6 +387,7 @@ const useLocalGame = () => {
       const cached = localStorage.getItem(STATE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
+        parsed.exitRequests = parsed.exitRequests || { A: false, B: false };
         stateRef.current = parsed;
         setState(parsed);
       } else {

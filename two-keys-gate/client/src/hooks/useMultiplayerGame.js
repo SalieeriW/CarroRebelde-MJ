@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const DEFAULT_ROOM = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ROOM_CODE) || 'ROOM1';
 
@@ -107,6 +107,30 @@ const useMultiplayerGame = (preferredRole = null, roomCode = DEFAULT_ROOM) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferredRole, state, myRole]);
 
+  const sendRelease = useCallback(
+    async (payload = {}) => {
+      const body = JSON.stringify({ ...payload, clientId });
+      const url = `${apiBase}/rooms/${roomCode}/release`;
+
+      try {
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          const blob = new Blob([body], { type: 'application/json' });
+          navigator.sendBeacon(url, blob);
+          return;
+        }
+
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        });
+      } catch (e) {
+        console.warn('Release request failed', e);
+      }
+    },
+    [apiBase, roomCode, clientId]
+  );
+
   const claimRole = (role) => post('/claim', { role });
   const releaseRole = (role) => post('/release', { role });
   const setReady = (ready = true) => post('/ready', { ready });
@@ -124,16 +148,34 @@ const useMultiplayerGame = (preferredRole = null, roomCode = DEFAULT_ROOM) => {
         return setReady(true);
       case 'start_request':
         return startCountdown();
+      case 'request_exit':
+        return post('/exit-request');
+      case 'cancel_exit':
+        return post('/exit-cancel');
       default:
         return Promise.resolve();
     }
   };
 
-  const leaveRoom = () => {
-    post('/release').catch(() => {});
+  const leaveRoom = useCallback(() => {
+    sendRelease();
     setConnected(false);
     setMyRole(null);
-  };
+  }, [sendRelease]);
+
+  useEffect(() => {
+    const handleUnload = () => {
+      sendRelease();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleUnload);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', handleUnload);
+      }
+    };
+  }, [sendRelease]);
 
   return {
     room: null,

@@ -739,6 +739,13 @@ body {
   border-radius: 0;
 }
 
+.chat-message.system-message {
+  background: transparent;
+  border-color: var(--pixel-gray, #808080);
+  color: var(--pixel-gray, #808080);
+  font-style: italic;
+}
+
 .chat-message.own-message {
   border-color: var(--pixel-green, #00ff41);
   margin-left: 20px;
@@ -753,6 +760,14 @@ body {
   color: var(--pixel-purple, #b300ff);
   margin-right: 8px;
   font-weight: bold;
+}
+
+.chat-message.system-message .chat-sender {
+  color: var(--pixel-gray, #808080);
+}
+
+.chat-message.system-message .chat-text {
+  color: var(--pixel-gray, #808080);
 }
 
 .chat-message.own-message .chat-sender {
@@ -985,6 +1000,22 @@ body {
 
 .confirm-section {
   margin-top: 20px;
+}
+
+.exit-notice {
+  margin-top: 12px;
+  padding: 10px;
+  border: 2px solid var(--pixel-yellow, #f9d71c);
+  background: var(--pixel-dark, #0f0f1e);
+  box-shadow:
+    inset -2px -2px 0px var(--pixel-black, #000),
+    inset 2px 2px 0px var(--pixel-white, #fff);
+}
+
+.exit-notice-text {
+  color: var(--pixel-yellow, #f9d71c);
+  font-size: 9px;
+  margin-bottom: 6px;
 }
 
 .confirm-button {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useLocalGame from '../hooks/useLocalGame';
 import useMultiplayerGame from '../hooks/useMultiplayerGame';
 import Lobby from './Lobby';
@@ -63,8 +63,29 @@ const TwoKeysGateView = ({
     // placeholder for future effects
   }, []);
 
-  const handleExitToMainboard = () => {
+  const exitingRef = useRef(false);
+
+  const reportResult = async (won = false) => {
+    const host = typeof window !== 'undefined' && window.location?.hostname
+      ? window.location.hostname
+      : 'localhost';
+    const url = `http://${host}:2567/minigame/result`;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ won }),
+      });
+    } catch (e) {
+      console.warn('No se pudo enviar resultado del minijuego', e);
+    }
+  };
+
+  const handleExitToMainboard = async (won = false) => {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
     leaveRoom?.();
+    await reportResult(won);
     // Navigate back to mainboard
     window.location.href = '/';
   };
@@ -170,18 +191,17 @@ const TwoKeysGateView = ({
             state={state}
             myRole={myRole}
             sendMessage={sendMessage}
-            onExit={handleExitConfirm}
+            onExitToMainboard={handleExitToMainboard}
           />
         );
 
       case 'success':
-        // Only show exit on final level
         const totalLevels = state?.totalLevels || 3;
         const isFinal = (state?.levelId || 1) >= totalLevels;
         return (
           <SuccessScreen
             message={state.resultMessage}
-            onContinue={isFinal ? handleExitToMainboard : null}
+            onExit={isFinal ? () => handleExitToMainboard(true) : null}
           />
         );
 

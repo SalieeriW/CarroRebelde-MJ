@@ -18,10 +18,10 @@ services:
       dockerfile: client/Dockerfile
     container_name: twokeys-player-a
     environment:
-      - PORT=5174
+      - PORT=8174
       - VITE_API_URL=http://localhost:3001
     ports:
-      - "5174:5174"
+      - "8174:8174"
     depends_on:
       - twokeys-server
     networks:
@@ -34,10 +34,10 @@ services:
       dockerfile: client/Dockerfile
     container_name: twokeys-player-b
     environment:
-      - PORT=5175
+      - PORT=8175
       - VITE_API_URL=http://localhost:3001
     ports:
-      - "5175:5175"
+      - "8175:8175"
     depends_on:
       - twokeys-server
     networks:

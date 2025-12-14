@@ -40,6 +40,7 @@ interface RoomState {
   resultSuccess: boolean;
   chatMessages: ChatMessage[];
   playersConnected: number;
+  exitRequests: { A: boolean; B: boolean };
 }
 
 interface RoomRecord {
@@ -83,6 +84,7 @@ function createRoom(code: string): RoomRecord {
     resultSuccess: false,
     chatMessages: [],
     playersConnected: 0,
+    exitRequests: { A: false, B: false },
   };
 
   return {
@@ -113,6 +115,15 @@ function getRoleByClient(state: RoomState, clientId: string): 'A' | 'B' | null {
   if (state.playerA.sessionId === clientId) return 'A';
   if (state.playerB.sessionId === clientId) return 'B';
   return null;
+}
+
+function pushSystemMessage(state: RoomState, text: string) {
+  state.chatMessages.push({
+    role: 'system',
+    text,
+    timestamp: nowMs(),
+  });
+  state.chatMessages = state.chatMessages.slice(-20);
 }
 
 function cancelCountdown(room: RoomRecord) {
@@ -200,24 +211,37 @@ app.post('/rooms/:code/release', (req: Request, res: Response) => {
   if (!clientId) return;
   const role = (req.body?.role || '').toUpperCase();
   const room = getRoom(req.params.code);
+  const rolesLeft: ('A' | 'B')[] = [];
 
   if (role === 'A' || role === 'B') {
     const target = role === 'A' ? room.state.playerA : room.state.playerB;
     if (target.sessionId === clientId) {
       Object.assign(target, createPlayer(target.role));
+      rolesLeft.push(role);
+      const exitRole: 'A' | 'B' = role;
+      room.state.exitRequests[exitRole] = false;
     }
   } else {
     if (room.state.playerA.sessionId === clientId) {
       Object.assign(room.state.playerA, createPlayer('A'));
+      rolesLeft.push('A');
+      room.state.exitRequests.A = false;
     }
     if (room.state.playerB.sessionId === clientId) {
       Object.assign(room.state.playerB, createPlayer('B'));
+      rolesLeft.push('B');
+      room.state.exitRequests.B = false;
     }
   }
 
   room.state.playersConnected = countPlayers(room.state);
   cancelCountdown(room);
   cancelNextLevel(room);
+
+  if (rolesLeft.length > 0) {
+    const label = rolesLeft.length === 2 ? 'Los jugadores A y B' : `El jugador ${rolesLeft[0]}`;
+    pushSystemMessage(room.state, `${label} salió de la sala.`);
+  }
   res.json(room.state);
 });
 
@@ -346,6 +370,47 @@ app.post('/rooms/:code/chat', (req: Request, res: Response) => {
   res.json(room.state);
 });
 
+app.post('/rooms/:code/exit-request', (req: Request, res: Response) => {
+  const clientId = ensureClientId(req, res);
+  if (!clientId) return;
+  const room = getRoom(req.params.code);
+  const role = getRoleByClient(room.state, clientId);
+  if (!role) {
+    res.status(403).json({ error: 'Seat not claimed' });
+    return;
+  }
+
+  room.state.exitRequests[role] = true;
+  cancelCountdown(room);
+  cancelNextLevel(room);
+
+  pushSystemMessage(
+    room.state,
+    `El jugador ${role} quiere abandonar. Esperando confirmación del otro jugador.`
+  );
+
+  if (room.state.exitRequests.A && room.state.exitRequests.B) {
+    pushSystemMessage(room.state, 'Ambos jugadores aceptaron abandonar. Cerrando partida.');
+  }
+
+  res.json(room.state);
+});
+
+app.post('/rooms/:code/exit-cancel', (req: Request, res: Response) => {
+  const clientId = ensureClientId(req, res);
+  if (!clientId) return;
+  const room = getRoom(req.params.code);
+  const role = getRoleByClient(room.state, clientId);
+  if (!role) {
+    res.status(403).json({ error: 'Seat not claimed' });
+    return;
+  }
+
+  room.state.exitRequests[role] = false;
+  pushSystemMessage(room.state, `El jugador ${role} decidió seguir jugando.`);
+  res.json(room.state);
+});
+
 // ============ Game Logic ============
 
 function getHint(room: RoomState) {
@@ -424,6 +489,7 @@ function resetForNextRound(room: RoomRecord, nextLevelId?: number, autoContinue 
   state.playerA.isReady = false;
   state.playerB.isReady = false;
   resetConfirmations(state);
+  state.exitRequests = { A: false, B: false };
 
   if (autoContinue) {
     // Briefing 1s then active

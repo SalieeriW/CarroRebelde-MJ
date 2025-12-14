@@ -1,6 +1,6 @@
 import React from 'react';
 
-const SuccessScreen = ({ message, onContinue }) => {
+const SuccessScreen = ({ message, onContinue, onExit }) => {
 
   return (
     <div className="pixel-view">
@@ -25,9 +25,18 @@ const SuccessScreen = ({ message, onContinue }) => {
           <span className="star">⭐</span>
         </div>
 
-        {/* Continue Button */}
+        {/* Continue / Exit */}
         {onContinue && (
           <button className="pixel-button large" onClick={onContinue}>
+            Continuar
+          </button>
+        )}
+        {onExit && (
+          <button
+            className="pixel-button large"
+            style={{ marginTop: onContinue ? '12px' : 0 }}
+            onClick={onExit}
+          >
             Salir
           </button>
         )}

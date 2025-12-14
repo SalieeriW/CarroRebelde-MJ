@@ -5,7 +5,7 @@ import HintPanel from './HintPanel';
 import PixelDialog from './PixelDialog';
 import levelData from '../../../shared/levelData.json';
 
-const Level1 = ({ state, myRole, sendMessage, onExit }) => {
+const Level1 = ({ state, myRole, sendMessage, onExitToMainboard }) => {
   const [selectedAnswers, setSelectedAnswers] = useState([]);
   const [isConfirming, setIsConfirming] = useState(false);
   const [otherPlayerConfirmed, setOtherPlayerConfirmed] = useState(false);
@@ -130,6 +130,38 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
   // Messages from state
   const chatMessages = state.chatMessages ? Array.from(state.chatMessages) : [];
   const totalLevels = levelData.levels.length;
+  const exitRequests = state?.exitRequests || { A: false, B: false };
+  const myExitRequested = myRole === 'A' ? exitRequests.A : exitRequests.B;
+  const otherExitRequested = myRole === 'A' ? exitRequests.B : exitRequests.A;
+  const bothWantExit = Boolean(myExitRequested && otherExitRequested);
+
+  useEffect(() => {
+    if (bothWantExit && onExitToMainboard) {
+      onExitToMainboard(false);
+    }
+  }, [bothWantExit, onExitToMainboard]);
+
+  // Prompt when the other player wants to abandon
+  useEffect(() => {
+    if (otherExitRequested && !myExitRequested) {
+      setShowDialog({
+        type: 'confirm',
+        title: 'Tu compañero quiere salir',
+        message: '¿Abandonan la partida? Deben aceptar ambos.',
+        confirmText: 'Aceptar',
+        cancelText: 'Seguir jugando',
+        onConfirm: () => {
+          setShowDialog(null);
+          sendMessage('request_exit');
+        },
+        onCancel: () => {
+          setShowDialog(null);
+          sendMessage('cancel_exit');
+        }
+      });
+    }
+  }, [otherExitRequested, myExitRequested, sendMessage]);
+
   const shuffledOptions = useMemo(() => {
     const arr = Array.from(level.options || []);
     for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -139,6 +171,27 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.levelId, level.options]);
+
+  const canShowExit = ['active', 'retry', 'sync_confirm'].includes(state?.phase);
+
+  const handleAbandonClick = () => {
+    setShowDialog({
+      type: 'confirm',
+      title: 'Abandonar partida',
+      message: 'Esta acción solicitará salir. Saldrán solo si ambos aceptan.',
+      confirmText: 'Solicitar salida',
+      cancelText: 'Cancelar',
+      onConfirm: () => {
+        setShowDialog(null);
+        sendMessage('request_exit');
+      },
+      onCancel: () => setShowDialog(null),
+    });
+  };
+
+  const handleCancelExit = () => {
+    sendMessage('cancel_exit');
+  };
 
   return (
     <div className="pixel-view level-view">
@@ -158,9 +211,11 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
 
       {/* Top Bar */}
       <div className="level-top-bar">
-        <button className="exit-button-top" onClick={onExit}>
-          ← Volver
-        </button>
+        {canShowExit && (
+          <button className="exit-button-top" onClick={handleAbandonClick}>
+            ← Volver (abandonar)
+          </button>
+        )}
         <div className="level-title">{level.nameES}</div>
         <div className="level-progress">Nivel {state?.levelId || 1}/{totalLevels}</div>
       </div>
@@ -257,9 +312,39 @@ const Level1 = ({ state, myRole, sendMessage, onExit }) => {
                 : 'Insertar Llave'}
             </button>
 
-            {otherPlayerConfirmed && !isConfirming && (
+              {otherPlayerConfirmed && !isConfirming && (
               <div className="other-player-waiting">
                 Jugador {otherRole} está esperando...
+              </div>
+            )}
+
+            {(myExitRequested || otherExitRequested) && (
+              <div className="exit-notice">
+                {bothWantExit && (
+                  <div className="exit-notice-text">Ambos aceptaron abandonar. Saliendo...</div>
+                )}
+                {myExitRequested && !otherExitRequested && (
+                  <div className="exit-notice-text">Has solicitado abandonar. Esperando a Jugador {otherRole}.</div>
+                )}
+                {!myExitRequested && otherExitRequested && (
+                  <div className="exit-notice-text">Jugador {otherRole} quiere abandonar. ¿Aceptas?</div>
+                )}
+
+                {myExitRequested && !otherExitRequested && (
+                  <button className="pixel-button small" onClick={handleCancelExit}>
+                    Cancelar solicitud
+                  </button>
+                )}
+                {!myExitRequested && otherExitRequested && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <button className="pixel-button small" onClick={() => sendMessage('request_exit')}>
+                      Aceptar
+                    </button>
+                    <button className="pixel-button small" onClick={() => sendMessage('cancel_exit')}>
+                      Seguir jugando
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

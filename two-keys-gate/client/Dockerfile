@@ -12,8 +12,8 @@ COPY client ./
 COPY shared ./shared
 COPY shared /shared
 
-ENV PORT=5174
-EXPOSE 5174
+ENV PORT=8174
+EXPOSE 8174
 
 # Run Vite dev server for interactive testing
 CMD ["sh", "-c", "npm run dev -- --host --port ${PORT:-5174}"]

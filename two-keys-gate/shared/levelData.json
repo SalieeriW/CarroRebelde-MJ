@@ -70,16 +70,16 @@
       "playerA": {
         "title": "Tu Vista (Jugador A)",
         "description": "Orden de elementos:",
-        "sequence": ["Agua", "Viento", "Fuego"],
+        "sequence": ["🌊", "🌀", "🔥"],
         "instruction": "Di los elementos en orden."
       },
       "playerB": {
         "title": "Tu Información (Jugador B)",
         "description": "Elemento → Forma:",
         "mapping": {
-          "Agua": "Círculo",
-          "Viento": "Triángulo",
-          "Fuego": "Cuadrado"
+          "🌊": "Círculo",
+          "🌀": "Triángulo",
+          "🔥": "Cuadrado"
         },
         "instruction": "Traduce cada elemento a su forma, mantén el orden."
       },

@@ -26,15 +26,23 @@ const TeamChat = ({ messages, onSendMessage, myRole }) => {
       {/* Messages */}
       <div className="chat-messages">
         {messages && messages.length > 0 ? (
-          messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`chat-message ${msg.role === myRole ? 'own-message' : 'other-message'}`}
-            >
-              <span className="chat-sender">Jugador {msg.role}:</span>
-              <span className="chat-text">{msg.text}</span>
-            </div>
-          ))
+          messages.map((msg, i) => {
+            const isSystem = msg.role === 'system';
+            const className = isSystem
+              ? 'system-message'
+              : msg.role === myRole
+                ? 'own-message'
+                : 'other-message';
+
+            return (
+              <div key={i} className={`chat-message ${className}`}>
+                <span className="chat-sender">
+                  {isSystem ? 'Sistema:' : `Jugador ${msg.role}:`}
+                </span>
+                <span className="chat-text">{msg.text}</span>
+              </div>
+            );
+          })
         ) : (
           <div className="no-messages">
             Aún no hay mensajes. ¡Empieza a comunicarte!
