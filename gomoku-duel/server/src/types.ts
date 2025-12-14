@@ -44,6 +44,7 @@ export interface RoomState {
   chatMessages: ChatMessage[];
   gomoku: GomokuData;
   createdAt: number;
+  exitRequests: { A: boolean; B: boolean };
 }
 
 export interface RoomRecord {

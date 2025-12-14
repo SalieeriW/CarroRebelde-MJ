@@ -768,6 +768,13 @@ body {
   margin-right: 20px;
 }
 
+.chat-message.system-message {
+  border-color: var(--pixel-yellow, #f9d71c);
+  background: var(--pixel-dark, #0f0f1e);
+  text-align: center;
+  margin: 10px 0;
+}
+
 .chat-sender {
   color: var(--pixel-purple, #b300ff);
   margin-right: 8px;

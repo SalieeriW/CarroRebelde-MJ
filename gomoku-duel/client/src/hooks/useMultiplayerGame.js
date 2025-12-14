@@ -122,6 +122,8 @@ const useMultiplayerGame = (preferredRole = null, roomCode = DEFAULT_ROOM) => {
   const makeMove = (x, y) => post('/move', { x, y });
   const resetGame = () => post('/reset');
   const sendChat = (text) => post('/chat', { text });
+  const requestExit = () => post('/exit-request');
+  const cancelExit = () => post('/exit-cancel');
 
   const leaveRoom = () => {
     post('/release').catch(() => {});
@@ -143,6 +145,8 @@ const useMultiplayerGame = (preferredRole = null, roomCode = DEFAULT_ROOM) => {
     makeMove,
     resetGame,
     sendChat,
+    requestExit,
+    cancelExit,
     leaveRoom,
   };
 };

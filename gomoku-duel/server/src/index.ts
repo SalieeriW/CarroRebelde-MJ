@@ -45,6 +45,7 @@ function createRoom(code: string): RoomRecord {
       aiColor: 'white',
       currentPlayer: 'A',
     },
+    exitRequests: { A: false, B: false },
     createdAt: nowMs(),
   };
 
@@ -95,6 +96,16 @@ function cancelAIMove(room: RoomRecord) {
   }
 }
 
+function pushSystemMessage(state: RoomState, text: string) {
+  const message: ChatMessage = {
+    role: 'SYSTEM',
+    text,
+    timestamp: nowMs(),
+  };
+  state.chatMessages.push(message);
+  state.chatMessages = state.chatMessages.slice(-20);
+}
+
 function getPlayerStoneValue(gomoku: { playerColor: 'black' | 'white' }): 1 | 2 {
   return gomoku.playerColor === 'black' ? 1 : 2;
 }
@@ -129,6 +140,7 @@ function resetGame(room: RoomRecord) {
   room.state.playerB.isReady = false;
   room.state.startAt = 0;
   room.state.countdownMs = 0;
+  room.state.exitRequests = { A: false, B: false };
   cancelCountdown(room);
   cancelAIMove(room);
 }
@@ -217,23 +229,99 @@ app.post('/rooms/:code/release', (req: Request, res: Response) => {
   if (!clientId) return;
   const role = (req.body?.role || '').toUpperCase();
   const room = getRoom(req.params.code);
+  const rolesLeft: ('A' | 'B')[] = [];
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server/index.ts:215',message:'Release request received',data:{clientId,role,playerA:room.state.playerA.sessionId,playerB:room.state.playerB.sessionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
 
   if (role === 'A' || role === 'B') {
     const target = role === 'A' ? room.state.playerA : room.state.playerB;
     if (target.sessionId === clientId) {
       Object.assign(target, createPlayer(target.role));
+      rolesLeft.push(role);
+      room.state.exitRequests[role] = false;
     }
   } else {
     if (room.state.playerA.sessionId === clientId) {
       Object.assign(room.state.playerA, createPlayer('A'));
+      rolesLeft.push('A');
+      room.state.exitRequests.A = false;
     }
     if (room.state.playerB.sessionId === clientId) {
       Object.assign(room.state.playerB, createPlayer('B'));
+      rolesLeft.push('B');
+      room.state.exitRequests.B = false;
     }
   }
 
   room.state.playersConnected = countPlayers(room.state);
   cancelCountdown(room);
+  cancelAIMove(room);
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server/index.ts:240',message:'Player released',data:{rolesLeft,playersConnected:room.state.playersConnected},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
+
+  if (rolesLeft.length > 0) {
+    const exitRole: 'A' | 'B' = rolesLeft[0];
+    room.state.exitRequests[exitRole] = false;
+    const label = rolesLeft.length === 2 ? 'Los jugadores A y B' : `El jugador ${rolesLeft[0]}`;
+    pushSystemMessage(room.state, `${label} salió de la sala.`);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server/index.ts:244',message:'System message pushed',data:{message:`${label} salió de la sala.`,chatMessagesCount:room.state.chatMessages.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+  }
+
+  res.json(room.state);
+});
+
+app.post('/rooms/:code/exit-request', (req: Request, res: Response) => {
+  const clientId = ensureClientId(req, res);
+  if (!clientId) return;
+  const room = getRoom(req.params.code);
+  const role = getRoleByClient(room.state, clientId);
+  if (!role) {
+    res.status(403).json({ error: 'Seat not claimed' });
+    return;
+  }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server/index.ts:256',message:'Exit request received',data:{role,exitRequests:room.state.exitRequests},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+  // #endregion
+
+  room.state.exitRequests[role] = true;
+  cancelCountdown(room);
+  cancelAIMove(room);
+
+  pushSystemMessage(
+    room.state,
+    `El jugador ${role} quiere abandonar. Esperando confirmación del otro jugador.`
+  );
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server/index.ts:268',message:'Exit request processed',data:{exitRequests:room.state.exitRequests,bothRequested:room.state.exitRequests.A && room.state.exitRequests.B},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+  // #endregion
+
+  if (room.state.exitRequests.A && room.state.exitRequests.B) {
+    pushSystemMessage(room.state, 'Ambos jugadores aceptaron abandonar. Cerrando partida.');
+  }
+
+  res.json(room.state);
+});
+
+app.post('/rooms/:code/exit-cancel', (req: Request, res: Response) => {
+  const clientId = ensureClientId(req, res);
+  if (!clientId) return;
+  const room = getRoom(req.params.code);
+  const role = getRoleByClient(room.state, clientId);
+  if (!role) {
+    res.status(403).json({ error: 'Seat not claimed' });
+    return;
+  }
+
+  room.state.exitRequests[role] = false;
+  pushSystemMessage(room.state, `El jugador ${role} decidió seguir jugando.`);
   res.json(room.state);
 });
 

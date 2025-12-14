@@ -21,6 +21,7 @@ const GomokuGame = ({ state, myRole, onMove, onReset, onSendChat, onExit }) => {
     let title = '';
     let message = '';
     let panelClass = '';
+    const won = winner === 'player';
 
     if (winner === 'player') {
       title = messages.victory;
@@ -40,9 +41,16 @@ const GomokuGame = ({ state, myRole, onMove, onReset, onSendChat, onExit }) => {
       <div className={`result-panel ${panelClass}`}>
         <h2 className="result-title">{title}</h2>
         <p className="result-message">{message}</p>
-        <button className="pixel-button large" onClick={onReset}>
-          {messages.reset}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' }}>
+          <button className="pixel-button large" onClick={() => onExit(won)}>
+            Salir
+          </button>
+          {!won && (
+            <button className="pixel-button small" onClick={onReset}>
+              {messages.reset}
+            </button>
+          )}
+        </div>
       </div>
     );
   };
@@ -51,7 +59,7 @@ const GomokuGame = ({ state, myRole, onMove, onReset, onSendChat, onExit }) => {
     <div className="level-view">
       {/* Top bar */}
       <div className="level-top-bar">
-        <button className="exit-button-top" onClick={onExit}>
+        <button className="exit-button-top" onClick={() => onExit(false)}>
           ← {messages.exit}
         </button>
         <div className="level-title">{gameData.nameES}</div>
