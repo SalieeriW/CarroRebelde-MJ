@@ -182,6 +182,13 @@ function resetAdvance(room: RoomRecord) {
   }
 }
 
+function countPlayers(state: RoomState): number {
+  let count = 0;
+  if (state.playerA.sessionId) count += 1;
+  if (state.playerB.sessionId) count += 1;
+  return count;
+}
+
 function resetForLevel(room: RoomRecord, nextLevelId: number) {
   const level = getLevel(nextLevelId);
   room.state.levelId = nextLevelId;
@@ -264,7 +271,8 @@ app.post('/rooms/:code/claim', (req, res) => {
 app.post('/rooms/:code/release', (req, res) => {
   const clientId = ensureClientId(req, res);
   if (!clientId) return;
-  const room = getRoom(req.params.code);
+  const roomCode = (req.params.code || DEFAULT_ROOM).toUpperCase();
+  const room = getRoom(roomCode);
   if (room.state.playerA.sessionId === clientId) {
     Object.assign(room.state.playerA, createPlayer('A'));
   }
@@ -272,6 +280,16 @@ app.post('/rooms/:code/release', (req, res) => {
     Object.assign(room.state.playerB, createPlayer('B'));
   }
   room.state.phase = 'lobby';
+  
+  const playersConnected = countPlayers(room.state);
+  
+  if (playersConnected === 0) {
+    resetAdvance(room);
+    rooms.set(roomCode, createRoom(roomCode));
+    res.json(getRoom(roomCode).state);
+    return;
+  }
+  
   res.json(room.state);
 });
 

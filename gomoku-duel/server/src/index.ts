@@ -263,6 +263,14 @@ app.post('/rooms/:code/release', (req: Request, res: Response) => {
   fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server/index.ts:240',message:'Player released',data:{rolesLeft,playersConnected:room.state.playersConnected},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
   // #endregion
 
+  const roomCode = (req.params.code || DEFAULT_ROOM_CODE).toUpperCase();
+
+  if (room.state.playersConnected === 0) {
+    rooms.set(roomCode, createRoom(roomCode));
+    res.json(getRoom(roomCode).state);
+    return;
+  }
+
   if (rolesLeft.length > 0) {
     const exitRole: 'A' | 'B' = rolesLeft[0];
     room.state.exitRequests[exitRole] = false;
