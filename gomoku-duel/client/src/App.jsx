@@ -102,48 +102,43 @@ function App() {
     }
   };
 
+  const handleExitToMainboard = useCallback(async (won = false) => {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    leaveRoom();
+    await reportResult(won);
+    window.location.href = '/';
+  }, [leaveRoom, reportResult]);
+
+  const handleExitConfirm = () => {
+    setShowDialog({
+      type: 'confirm',
+      title: 'Salir del Desafío',
+      message: '¿Quieres salir del desafío? Puedes volver cuando quieras.',
+      confirmText: 'Salir',
+      cancelText: 'Quedarme',
+      onConfirm: () => {
+        setShowDialog(null);
+        handleExitToMainboard();
+      },
+      onCancel: () => setShowDialog(null),
+    });
+  };
+
   const exitRequests = state?.exitRequests || { A: false, B: false };
   const myExitRequested = myRole === 'A' ? exitRequests.A : exitRequests.B;
   const otherExitRequested = myRole === 'A' ? exitRequests.B : exitRequests.A;
   const bothWantExit = Boolean(myExitRequested && otherExitRequested);
 
-  const handleExitToMainboard = useCallback(async (won = false) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client/App.jsx:110',message:'handleExitToMainboard called',data:{won,exitingRef:exitingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-    // #endregion
-    if (exitingRef.current) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client/App.jsx:113',message:'Already exiting, returning early',data:{won,exitingRef:exitingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-      // #endregion
-      return;
-    }
-    exitingRef.current = true;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client/App.jsx:116',message:'Calling leaveRoom and reportResult',data:{won},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-    // #endregion
-    leaveRoom();
-    await reportResult(won);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client/App.jsx:120',message:'Navigating to mainboard',data:{won},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-    // #endregion
-    window.location.href = '/';
-  }, [leaveRoom, reportResult]);
-
   useEffect(() => {
-    if (bothWantExit) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client/App.jsx:118',message:'bothWantExit detected',data:{bothWantExit,myExitRequested,otherExitRequested,exitingRef:exitingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-      // #endregion
+    if (bothWantExit && (currentView === 'active' || currentView === 'finished')) {
       setShowDialog(null);
       handleExitToMainboard(false);
     }
-  }, [bothWantExit, handleExitToMainboard]);
+  }, [bothWantExit, currentView, handleExitToMainboard]);
 
   useEffect(() => {
-    if (otherExitRequested && !myExitRequested && !bothWantExit) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/f4742f3a-4307-4e14-a3d4-5fb2145a2fd7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client/App.jsx:130',message:'Showing exit dialog',data:{otherExitRequested,myExitRequested,bothWantExit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-      // #endregion
+    if (otherExitRequested && !myExitRequested && !bothWantExit && (currentView === 'active' || currentView === 'finished') && !showDialog) {
       setShowDialog({
         type: 'confirm',
         title: 'Tu compañero quiere salir',
@@ -160,27 +155,24 @@ function App() {
         },
       });
     }
-  }, [otherExitRequested, myExitRequested, bothWantExit, requestExit, cancelExit]);
+  }, [otherExitRequested, myExitRequested, bothWantExit, currentView, requestExit, cancelExit, showDialog]);
 
-  const handleExitConfirm = (won = false) => {
+  const handleGameExit = (won = false) => {
     if (won) {
       handleExitToMainboard(won);
       return;
     }
     setShowDialog({
       type: 'confirm',
-      title: 'Salir del Juego',
-      message: '¿Quieres salir del juego? Debes esperar la confirmación del otro jugador.',
-      confirmText: 'Solicitar salir',
-      cancelText: 'Quedarme',
+      title: 'Abandonar partida',
+      message: 'Esta acción solicitará salir. Saldrán solo si ambos aceptan.',
+      confirmText: 'Solicitar salida',
+      cancelText: 'Cancelar',
       onConfirm: () => {
         setShowDialog(null);
         requestExit();
       },
-      onCancel: () => {
-        setShowDialog(null);
-        exitingRef.current = false;
-      },
+      onCancel: () => setShowDialog(null),
     });
   };
 
@@ -222,14 +214,14 @@ function App() {
             playerColor={state.gomoku?.playerColor}
             aiColor={state.gomoku?.aiColor}
             countdownMs={state.countdownMs}
-            onExit={() => handleExitToMainboard(false)}
+            onExit={handleExitConfirm}
             defaultRole={defaultRole}
           />
         </div>
       )}
 
       {currentView === 'briefing' && (
-        <Briefing countdownMs={state.countdownMs} />
+        <Briefing countdownMs={state.countdownMs} onExit={handleExitConfirm} />
       )}
 
       {(currentView === 'active' || currentView === 'finished') && (
@@ -239,7 +231,7 @@ function App() {
           onMove={handleMove}
           onReset={handleReset}
           onSendChat={handleSendChat}
-          onExit={handleExitConfirm}
+          onExit={handleGameExit}
         />
       )}
 
