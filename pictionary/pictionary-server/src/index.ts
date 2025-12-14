@@ -7,17 +7,23 @@ import { randomInt } from 'crypto';
 const app = express();
 const PORT = process.env.PORT || 2234;
 
-// Middleware
+// ============================================
+// MIDDLEWARE
+// ============================================
+
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '10mb' })); 
+app.use(express.json({ limit: '10mb' })); // Límite alto para canvas base64
 
 // ============================================
-// 1. LÓGICA DE PALABRAS
+// GESTIÓN DE PALABRAS
 // ============================================
 
-let ALL_WORDS: string[] = [];  
-let GAME_WORDS: string[] = []; 
+let ALL_WORDS: string[] = [];   // Todas las palabras del diccionario (validación)
+let GAME_WORDS: string[] = [];  // Palabras para usar en el juego
 
+/**
+ * Normaliza una palabra: quita tildes, convierte a mayúsculas y elimina espacios
+ */
 const normalizeWord = (word: string): string => {
     return word
         .normalize('NFD')
@@ -26,13 +32,16 @@ const normalizeWord = (word: string): string => {
         .trim();
 };
 
-// Cargar archivos de forma segura
+/**
+ * Carga palabras desde archivos en /resources
+ */
 try {
     const txtPath = join(process.cwd(), 'resources', 'spanish.txt');
     const txtData = readFileSync(txtPath, 'utf-8');
     ALL_WORDS = txtData.split('\n').map(w => normalizeWord(w)).filter(w => w.length > 0);
+    console.log(`✅ Loaded ${ALL_WORDS.length} validation words from spanish.txt`);
 } catch (error) {
-    console.error('⚠️ Warning: spanish.txt not found. Validation disabled.');
+    console.error('⚠️  spanish.txt not found. Validation disabled.');
 }
 
 try {
@@ -40,63 +49,90 @@ try {
     const jsonData = readFileSync(jsonPath, 'utf-8');
     const words = JSON.parse(jsonData);
     GAME_WORDS = words.map((w: string) => normalizeWord(w)).filter((w: string) => w.length > 0);
-    console.log(`✅ Loaded ${GAME_WORDS.length} game words.`);
+    console.log(`✅ Loaded ${GAME_WORDS.length} game words from spanish.json`);
 } catch (error) {
-    console.error('⚠️ Warning: spanish.json not found. Using default words.');
+    console.error('⚠️  spanish.json not found. Using fallback words.');
     GAME_WORDS = ['GATO', 'PERRO', 'CASA', 'SOL'];
 }
 
-const getRandomWord = () => {
+/**
+ * Obtiene una palabra aleatoria del conjunto de palabras del juego
+ */
+const getRandomWord = (): string => {
     if (GAME_WORDS.length === 0) return 'ERROR';
     const randomIndex = randomInt(0, GAME_WORDS.length);
     return GAME_WORDS[randomIndex];
 };
 
 // ============================================
-// 2. ESTADO DEL JUEGO
+// ESTADO DEL JUEGO
 // ============================================
 
 interface GameSession {
-    round: number;          
-    totalRounds: number;    
-    score: number;
-    word: string;       
-    canvasData: string; 
-    guesses: string[];
-    solved: boolean;
-    lastActivity: number;
+    round: number;          // Ronda actual (1-3)
+    totalRounds: number;    // Total de rondas (3)
+    score: number;          // Puntuación (no usado actualmente)
+    word: string;           // Palabra actual a adivinar
+    canvasData: string;     // Canvas en formato base64
+    guesses: string[];      // Historial de intentos
+    solved: boolean;        // Si la ronda actual fue resuelta
+    lastActivity: number;   // Timestamp de última actividad
 }
 
+// Mapa de sesiones activas: sessionId → GameSession
 const sessions = new Map<string, GameSession>();
 
-// Limpieza de sesiones viejas
+/**
+ * Limpieza automática de sesiones inactivas (cada 10 minutos)
+ * Elimina sesiones con más de 1 hora de inactividad
+ */
 setInterval(() => {
     const now = Date.now();
+    const oneHour = 3600000;
     sessions.forEach((session, id) => {
-        if (now - session.lastActivity > 3600000) sessions.delete(id);
+        if (now - session.lastActivity > oneHour) {
+            sessions.delete(id);
+            console.log(`🗑️  Session ${id} expired and removed`);
+        }
     });
-}, 600000); 
+}, 600000); // 10 minutos
 
 // ============================================
-// 3. ENDPOINTS API
+// ENDPOINTS API
 // ============================================
 
-// --- INICIAR / RECUPERAR SESIÓN ---
+/**
+ * GET /api/pictionary/word
+ * 
+ * Inicializa o recupera una sesión de juego.
+ * Si la sesión no existe, crea una nueva con ronda 1.
+ * Si la sesión terminó (round > totalRounds), la resetea.
+ * 
+ * Query params:
+ *   - sessionId: Identificador único de la partida
+ * 
+ * Retorna:
+ *   - word: Palabra actual a dibujar
+ *   - sessionId: ID de sesión
+ *   - round: Ronda actual
+ *   - totalRounds: Total de rondas
+ */
 app.get('/api/pictionary/word', (req: Request, res: Response): any => {
     const sessionId = req.query.sessionId as string;
     
-    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
+    if (!sessionId) {
+        return res.status(400).json({ error: 'Missing sessionId' });
+    }
 
-    // === FIX PARA DOCKER/REFRESH ===
-    // Si la sesión existe pero ya terminó, la borramos para empezar de 0
+    // Si la sesión terminó, resetearla
     if (sessions.has(sessionId)) {
         const existing = sessions.get(sessionId)!;
         if (existing.round > existing.totalRounds) {
-            console.log(`♻️ Resetting finished session: ${sessionId}`);
             sessions.delete(sessionId);
         }
     }
 
+    // Crear nueva sesión si no existe
     if (!sessions.has(sessionId)) {
         const initialWord = getRandomWord();
         sessions.set(sessionId, {
@@ -109,10 +145,10 @@ app.get('/api/pictionary/word', (req: Request, res: Response): any => {
             solved: false,
             lastActivity: Date.now()
         });
-        console.log(`🆕 New Session: ${sessionId} | Word: ${initialWord}`);
     }
 
     const session = sessions.get(sessionId)!;
+    session.lastActivity = Date.now();
     
     res.json({ 
         word: session.word, 
@@ -122,26 +158,59 @@ app.get('/api/pictionary/word', (req: Request, res: Response): any => {
     });
 });
 
-// --- DIBUJAR ---
+/**
+ * POST /api/pictionary/draw
+ * 
+ * Guarda el estado actual del canvas (dibujo).
+ * 
+ * Body:
+ *   - sessionId: ID de la sesión
+ *   - canvasData: Canvas serializado en base64 (dataURL)
+ * 
+ * Retorna:
+ *   - success: true/false
+ */
 app.post('/api/pictionary/draw', (req: Request, res: Response): any => {
     const { sessionId, canvasData } = req.body;
-    if (sessions.has(sessionId)) {
-        const session = sessions.get(sessionId)!;
+    
+    const session = sessions.get(sessionId);
+    if (session) {
         session.canvasData = canvasData;
         session.lastActivity = Date.now();
     }
+    
     res.json({ success: true });
 });
 
-// --- POLLING (ESTADO) ---
+/**
+ * GET /api/pictionary/canvas/:sessionId
+ * 
+ * Obtiene el estado actual del juego (usado para polling).
+ * El guesser usa este endpoint para obtener el dibujo actualizado.
+ * 
+ * Params:
+ *   - sessionId: ID de la sesión
+ * 
+ * Retorna:
+ *   - canvasData: Canvas en base64
+ *   - solved: Si la ronda fue resuelta
+ *   - wordLength: Longitud de la palabra (para mostrar slots)
+ *   - round: Ronda actual
+ *   - totalRounds: Total de rondas
+ *   - gameOver: Si el juego terminó (round > totalRounds)
+ */
 app.get('/api/pictionary/canvas/:sessionId', (req: Request, res: Response): any => {
     const { sessionId } = req.params;
     const session = sessions.get(sessionId);
     
     if (!session) {
         return res.json({ 
-            canvasData: '', solved: false, wordLength: 0,
-            round: 1, totalRounds: 3, gameOver: false 
+            canvasData: '', 
+            solved: false, 
+            wordLength: 0,
+            round: 1, 
+            totalRounds: 3, 
+            gameOver: false 
         }); 
     }
 
@@ -155,32 +224,42 @@ app.get('/api/pictionary/canvas/:sessionId', (req: Request, res: Response): any 
     });
 });
 
+/**
+ * POST /api/pictionary/guess
+ * 
+ * Valida un intento de adivinanza.
+ * Si es correcto, marca la ronda como resuelta y automáticamente
+ * avanza a la siguiente ronda después de 3 segundos.
+ * 
+ * Body:
+ *   - sessionId: ID de la sesión
+ *   - guess: Palabra adivinada
+ * 
+ * Retorna:
+ *   - correct: true/false
+ *   - word: Palabra correcta (solo si acertó)
+ */
 app.post('/api/pictionary/guess', (req: Request, res: Response): any => {
     const { sessionId, guess } = req.body;
     const session = sessions.get(sessionId);
     
-    console.log(`🔍 Guess received: "${guess}" for session ${sessionId}`);
-    console.log(`📊 Current state:`, {
-        word: session?.word,
-        round: session?.round,
-        solved: session?.solved
-    });
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
     
-    if (!session) return res.status(404).json({ error: 'No session' });
-    if (session.round > session.totalRounds) return res.json({ correct: false });
+    if (session.round > session.totalRounds) {
+        return res.json({ correct: false });
+    }
 
     const normalizedGuess = normalizeWord(guess || '');
     const isCorrect = normalizedGuess === session.word;
     
-    console.log(`✓ Comparison: "${normalizedGuess}" === "${session.word}" ? ${isCorrect}`);
-    
     if (isCorrect) {
         session.solved = true;
-        console.log(`🎉 Round ${session.round} WON!`);
         
+        // Avanzar automáticamente a la siguiente ronda después de 3 segundos
         setTimeout(() => {
             if (session.solved) {
-                const oldRound = session.round;
                 session.round++;
                 
                 if (session.round <= session.totalRounds) {
@@ -188,44 +267,89 @@ app.post('/api/pictionary/guess', (req: Request, res: Response): any => {
                     session.canvasData = '';
                     session.solved = false;
                     session.guesses = [];
-                    console.log(`⏩ Advanced: Round ${oldRound} → ${session.round}, new word: ${session.word}`);
-                } else {
-                    console.log(`🏁 Game finished!`);
-                }
+                } 
             }
         }, 3000);
     }
 
-    res.json({ correct: isCorrect, word: isCorrect ? session.word : null });
+    res.json({ 
+        correct: isCorrect, 
+        word: isCorrect ? session.word : null 
+    });
 });
-// --- SIGUIENTE RONDA (Ahora opcional, ya se hace automático) ---
+
+/**
+ * POST /api/pictionary/next-round
+ * 
+ * Avanza manualmente a la siguiente ronda (opcional).
+ * Generalmente no se usa porque el avance es automático al adivinar.
+ * 
+ * Body:
+ *   - sessionId: ID de la sesión
+ * 
+ * Retorna:
+ *   - success: true/false
+ *   - round: Ronda actual después del avance
+ */
 app.post('/api/pictionary/next-round', (req: Request, res: Response): any => {
     const { sessionId } = req.body;
     const session = sessions.get(sessionId);
 
-    if (!session) return res.json({ success: false });
+    if (!session) {
+        return res.json({ success: false });
+    }
 
-    // Si ya se procesó automáticamente, solo confirmar
+    // Si ya avanzó automáticamente, solo confirmar
     if (session.round > 1 && !session.solved) {
         return res.json({ success: true, round: session.round });
     }
 
-    // Forzar avance manual (por si acaso)
+    // Avance manual
     if (session.solved || session.round === 1) {
         session.round++;
+        
         if (session.round <= session.totalRounds) {
             session.word = getRandomWord();
             session.canvasData = '';
             session.solved = false;
             session.guesses = [];
-            console.log(`⏩ Manual Next Round (${session.round}): ${session.word}`);
         }
-        res.json({ success: true, round: session.round });
-    } else {
-        res.json({ success: false });
+        
+        return res.json({ success: true, round: session.round });
     }
+    
+    res.json({ success: false });
 });
 
+/**
+ * GET /health
+ * 
+ * Health check endpoint para verificar que el servidor está activo.
+ * 
+ * Retorna:
+ *   - status: 'ok'
+ *   - service: Nombre del servicio
+ *   - words: Cantidad de palabras cargadas
+ *   - activeSessions: Número de sesiones activas
+ */
+app.get('/health', (req: Request, res: Response) => {
+    res.json({
+        status: 'ok',
+        service: 'pictionary-2-server',
+        words: GAME_WORDS.length,
+        activeSessions: sessions.size,
+        port: PORT
+    });
+});
+
+// ============================================
+// INICIAR SERVIDOR
+// ============================================
+
 app.listen(PORT, () => {
-    console.log(`\n🎨 Server running inside Docker on port ${PORT}`);
+    console.log(`\n🎨 Pictionary Server`);
+    console.log(`📡 Running on: http://localhost:${PORT}`);
+    console.log(`🔢 Port: ${PORT}`);
+    console.log(`📚 Game words loaded: ${GAME_WORDS.length}`);
+    console.log(`✅ Ready!\n`);
 });
