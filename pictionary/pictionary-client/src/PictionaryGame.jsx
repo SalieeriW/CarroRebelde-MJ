@@ -16,13 +16,16 @@ function PictionaryGame() {
   const [sessionId] = useState(urlSessionId || Math.random().toString(36).substring(7));
   const [role, setRole] = useState(null);
   const [word, setWord] = useState('');
-  const [wordLength, setWordLength] = useState(0); // Longitud de la palabra
+  const [wordLength, setWordLength] = useState(0); 
   
   const [guess, setGuess] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [isWon, setIsWon] = useState(false);
   const [currentColor, setCurrentColor] = useState(PALETTE_COLORS[0]);
   const [showHelp, setShowHelp] = useState(false);
+
+  // Estado para el feedback visual al copiar
+  const [copyFeedback, setCopyFeedback] = useState(null);
 
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
@@ -43,11 +46,11 @@ function PictionaryGame() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Inicializar rol
+  // Inicializar rol si viene en la URL
   useEffect(() => {
     if (urlRole === 'drawer') initDrawer();
     else if (urlRole === 'guesser') initGuesser();
-  }, []);
+  }, [urlRole]);
 
   // Fondo del canvas
   useEffect(() => {
@@ -173,10 +176,8 @@ function PictionaryGame() {
     }
   };
 
-  // --- AQUI ESTA EL CAMBIO PRINCIPAL ---
   const handleInputChange = (e) => {
       const val = e.target.value.toUpperCase();
-      // Si sabemos el largo, impedimos escribir mas caracteres
       if (wordLength > 0 && val.length > wordLength) {
           return;
       }
@@ -185,6 +186,12 @@ function PictionaryGame() {
 
   const focusInput = () => {
       if (inputRef.current && !isWon) inputRef.current.focus();
+  };
+
+  const copyToClipboard = (text, type) => {
+    navigator.clipboard.writeText(text);
+    setCopyFeedback(type);
+    setTimeout(() => setCopyFeedback(null), 2000);
   };
 
   // --- MODAL DE AYUDA ---
@@ -217,22 +224,61 @@ function PictionaryGame() {
   // --- RENDERIZADO ---
 
   if (!role) {
+    const baseUrl = window.location.href.split('?')[0];
+    const drawerUrl = `${baseUrl}?sessionId=${sessionId}&role=drawer`;
+    const guesserUrl = `${baseUrl}?sessionId=${sessionId}&role=guesser`;
+
     return (
       <div className="retro-game">
         {showHelp && <HelpModal />}
         <div className="retro-header">
             <h1 className="retro-title">PICTIONARY.EXE</h1>
+            <p className="retro-subtitle">INICIAR SESIÓN MULTIJUGADOR </p>
         </div>
-        <div className="retro-card">
-            <p className="label">ID DE SESION:</p>
-            <div className="retro-id-box">{sessionId}</div>
-            <code className="retro-code">
-                {window.location.origin}?sessionId={sessionId}
-            </code>
+
+        {/* PANEL DE CONEXIÓN */}
+        <div className="retro-card connection-panel">
+            <div className="connection-row">
+                <div className="conn-info">
+                    <span className="badge drawer">JUGADOR 1 (DIBUJA)</span>
+                    <input readOnly value={drawerUrl} className="retro-input-readonly" />
+                </div>
+                <div className="conn-actions">
+                    <button 
+                        className="retro-btn sm" 
+                        onClick={() => copyToClipboard(drawerUrl, 'drawer')}
+                    >
+                        {copyFeedback === 'drawer' ? '¡COPIADO!' : '[ COPIAR ]'}
+                    </button>
+                    <a href={drawerUrl} target="_blank" rel="noreferrer" className="retro-btn sm action">
+                        [ ABRIR ↗ ]
+                    </a>
+                </div>
+            </div>
+
+            <div className="divider-dashed"></div>
+
+            <div className="connection-row">
+                <div className="conn-info">
+                    <span className="badge guesser">JUGADOR 2 (ADIVINA)</span>
+                    <input readOnly value={guesserUrl} className="retro-input-readonly" />
+                </div>
+                <div className="conn-actions">
+                    <button 
+                        className="retro-btn sm" 
+                        onClick={() => copyToClipboard(guesserUrl, 'guesser')}
+                    >
+                        {copyFeedback === 'guesser' ? '¡COPIADO!' : '[ COPIAR ]'}
+                    </button>
+                    <a href={guesserUrl} target="_blank" rel="noreferrer" className="retro-btn sm action">
+                        [ ABRIR ↗ ]
+                    </a>
+                </div>
+            </div>
         </div>
-        <div className="retro-controls">
-            <button className="retro-btn" onClick={initDrawer}>[ INICIAR DIBUJO ]</button>
-            <button className="retro-btn secondary" onClick={initGuesser}>[ INICIAR ADIVINANZA ]</button>
+        
+        <div className="retro-controls-center">
+             <p className="status-blink">ESPERANDO JUGADORES...</p>
         </div>
         <div className="footer-hint">PRESIONA [F10] PARA AYUDA</div>
       </div>
