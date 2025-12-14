@@ -38,6 +38,7 @@ const App = () => {
   const handleExitToMainboard = async (won = false) => {
     if (exitingRef.current) return;
     exitingRef.current = true;
+    game.leaveRoom?.();
     await game.reportResult?.(won);
     window.location.href = '/';
   };

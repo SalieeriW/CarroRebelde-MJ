@@ -467,3 +467,81 @@ body, html, #root {
     opacity: 1;
   }
 }
+
+/* Responsive Tweaks */
+@media (max-width: 960px) {
+  .roles-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .game-top-bar,
+  .game-bottom-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .game-stats,
+  .voice-controls,
+  .action-row,
+  .meta-grid {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .phaser-container-wrapper {
+    padding: 12px;
+  }
+
+  #phaser-container {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .voice-btn,
+  .pixel-button {
+    width: auto;
+  }
+
+  .success-container {
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .pill {
+    font-size: 9px;
+    padding: 5px 8px;
+  }
+
+  .seat-title {
+    font-size: 11px;
+  }
+
+  .seat-desc,
+  .seat-status,
+  .hint,
+  .meta-line {
+    font-size: 9px;
+  }
+
+  .game-top-bar,
+  .game-bottom-bar {
+    padding: 10px 12px;
+  }
+
+  .voice-controls,
+  .game-stats,
+  .action-row {
+    gap: 6px;
+  }
+
+  .phaser-container-wrapper {
+    padding: 8px;
+  }
+
+  .last-hit-banner {
+    left: 50%;
+    width: 90%;
+    bottom: 70px;
+  }
+}

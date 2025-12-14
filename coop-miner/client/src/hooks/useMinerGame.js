@@ -16,6 +16,12 @@ const getRoomCodeFromURL = () => {
   return (urlParams.get('room') || DEFAULT_ROOM).toUpperCase();
 };
 
+const getSessionIdFromURL = () => {
+  if (typeof window === 'undefined') return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('session');
+};
+
 const getPreferredRoleFromURL = () => {
   if (typeof window === 'undefined') return null;
   const urlParams = new URLSearchParams(window.location.search);
@@ -28,6 +34,7 @@ const useMinerGame = () => {
   const clientIdRef = useRef(null);
   const pollRef = useRef(null);
   const roomCode = useMemo(getRoomCodeFromURL, []);
+  const sessionId = useMemo(getSessionIdFromURL, []);
   const preferredRole = useMemo(getPreferredRoleFromURL, []);
 
   const [state, setState] = useState(null);
@@ -90,13 +97,15 @@ const useMinerGame = () => {
   };
 
   const reportResult = async (won = false) => {
-    const host = window.location.hostname || 'localhost';
+    const host = (typeof window !== 'undefined' && window.location.hostname) || 'localhost';
     const url = `http://${host}:2567/minigame/result`;
+    const payload = { won, roomCode };
+    if (sessionId) payload.sessionId = sessionId;
     try {
       await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ won }),
+        body: JSON.stringify(payload),
       });
     } catch (e) {
       console.warn('Failed to send minigame result', e);
