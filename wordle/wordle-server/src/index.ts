@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -7,194 +7,155 @@ import { randomInt } from 'crypto';
 const app = express();
 const port = process.env.PORT || 1234;
 
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// ============================================
-// CARGAR PALABRAS
-// ============================================
-
-let ALL_WORDS: string[] = []; // Todas las palabras válidas (de spanish.txt)
-let GAME_WORDS: string[] = []; // TODAS las palabras de spanish.json (SIN filtro de tamaño)
+// --- CARGA DE PALABRAS (Igual que antes) ---
+let ALL_WORDS: string[] = []; 
+let GAME_WORDS: string[] = []; 
 
 const normalizeWord = (word: string): string => {
-  return word
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase();
+  return word.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
 };
 
-// Cargar spanish.txt (TODAS las palabras para validación)
 try {
   const txtPath = join(process.cwd(), 'resources', 'spanish.txt');
-  const txtData = readFileSync(txtPath, 'utf-8');
-  
-  ALL_WORDS = txtData
-    .split('\n')
-    .map(word => normalizeWord(word.trim()))
-    .filter(word => word.length > 0);
-  
-  console.log(`✅ Loaded ${ALL_WORDS.length} words from spanish.txt (for validation)`);
-} catch (error) {
-  console.error('❌ Error loading spanish.txt:', error);
-  ALL_WORDS = [];
-}
+  ALL_WORDS = readFileSync(txtPath, 'utf-8').split('\n').map(w => normalizeWord(w)).filter(w => w.length > 0);
+} catch (e) { console.error('Error loading spanish.txt'); ALL_WORDS = []; }
 
-// Cargar spanish.json (TODAS las palabras - sin filtro de tamaño)
 try {
   const jsonPath = join(process.cwd(), 'resources', 'spanish.json');
-  const jsonData = readFileSync(jsonPath, 'utf-8');
-  const words = JSON.parse(jsonData);
-  
-  GAME_WORDS = words
-    .map((word: string) => normalizeWord(word))
-    .filter((word: string) => word.length > 0); // Solo eliminar vacías
-  
-  console.log(`✅ Loaded ${GAME_WORDS.length} game words from spanish.json (any length)`);
-} catch (error) {
-  console.error('❌ Error loading spanish.json:', error);
-  console.log('⚠️  Using fallback words');
-  GAME_WORDS = ['GATOS', 'PERRO', 'CASAS', 'LIBRO', 'MUNDO', 'FELIZ', 'AMIGO', 'COCHE', 'PLAYA'];
+  const words = JSON.parse(readFileSync(jsonPath, 'utf-8'));
+  GAME_WORDS = words.map((w: string) => normalizeWord(w)).filter((w: string) => w.length > 0);
+} catch (e) { 
+    GAME_WORDS = ['GATOS', 'PERRO', 'CASAS', 'LIBRO', 'COCHE', 'PLAYA'];
+}
+if (ALL_WORDS.length === 0) ALL_WORDS = GAME_WORDS;
+
+// --- GESTIÓN DE SESIONES ---
+
+interface WordleGuess {
+    word: string;
+    evaluation: string[];
 }
 
-// Si spanish.txt no cargó, usar las palabras del juego como fallback
-if (ALL_WORDS.length === 0) {
-  ALL_WORDS = GAME_WORDS;
-  console.log('⚠️  Using GAME_WORDS as ALL_WORDS fallback');
+interface GameSession {
+    targetWord: string;
+    guesses: WordleGuess[];
+    status: 'playing' | 'won' | 'lost';
+    stage: number; // 1, 2 o 3
+    maxStages: number;
+    lastActivity: number;
 }
 
-// ============================================
-// WORDLE ENDPOINTS
-// ============================================
+const sessions = new Map<string, GameSession>();
+const MAX_ATTEMPTS = 6;
+const TARGET_STAGES = 3; // NÚMERO DE PALABRAS A ACERTAR
 
-// GET /api/wordle/word - Obtener palabra aleatoria de spanish.json (cualquier tamaño)
-app.get('/api/wordle/word', (req, res) => {
-  if (GAME_WORDS.length === 0) {
-    return res.status(500).json({ error: 'No words available' });
-  }
-  
-  const randomIndex = randomInt(0, GAME_WORDS.length);
-  const word = GAME_WORDS[randomIndex];
-  
-  console.log(`🎯 Selected word: ${word} (length: ${word.length})`);
-  res.json({ word });
-});
+// Helper para sacar palabra random
+const getRandomWord = () => GAME_WORDS[randomInt(0, GAME_WORDS.length)];
 
-// POST /api/wordle/check-word - Verificar si palabra es válida (contra spanish.txt)
-app.post('/api/wordle/check-word', (req, res) => {
-  const { word } = req.body;
-  
-  if (!word || typeof word !== 'string') {
-    return res.status(400).json({ error: 'Missing word', isValid: false });
-  }
-  
-  const normalizedWord = normalizeWord(word);
-  
-  if (normalizedWord.length === 0) {
-    return res.status(400).json({ error: 'Word cannot be empty', isValid: false });
-  }
-  
-  // Verificar contra TODAS las palabras del diccionario (spanish.txt)
-  const isValid = ALL_WORDS.includes(normalizedWord);
-  
-  console.log(`🔍 Check: ${word} -> ${normalizedWord} (${normalizedWord.length} letters) = ${isValid ? 'VALID ✓' : 'INVALID ✗'}`);
-  
-  res.json({ isValid, word: normalizedWord });
-});
+// Limpieza automática
+setInterval(() => {
+    const now = Date.now();
+    sessions.forEach((s, id) => { if (now - s.lastActivity > 3600000) sessions.delete(id); });
+}, 600000);
 
-// POST /api/wordle/validate - Validar guess contra palabra objetivo (cualquier tamaño)
-app.post('/api/wordle/validate', (req, res) => {
-  const { guess, word } = req.body;
-  
-  if (!guess || !word) {
-    return res.status(400).json({ error: 'Missing guess or word' });
-  }
-  
-  const normalizedGuess = normalizeWord(guess);
-  const normalizedWord = normalizeWord(word);
-  
-  // Ya NO verificamos tamaño fijo - aceptamos cualquier tamaño
-  if (normalizedGuess.length !== normalizedWord.length) {
-    return res.status(400).json({ 
-      error: `Guess length (${normalizedGuess.length}) must match word length (${normalizedWord.length})`
-    });
-  }
-  
-  // Evaluar cada letra
-  const evaluation = normalizedGuess.split('').map((letter, index) => {
-    if (normalizedWord[index] === letter) {
-      return 'correct';
-    } else if (normalizedWord.includes(letter)) {
-      const letterCount = normalizedWord.split('').filter(l => l === letter).length;
-      const correctCount = normalizedWord.split('').filter((l, i) => 
-        l === letter && normalizedGuess[i] === letter
-      ).length;
-      const presentCount = normalizedGuess.split('').filter((l, i) => 
-        l === letter && normalizedWord[i] !== letter && i < index
-      ).length;
-      
-      if (presentCount < letterCount - correctCount) {
-        return 'present';
-      }
+// --- ENDPOINTS ---
+
+app.get('/api/wordle/state/:sessionId', (req: Request, res: Response): any => {
+    const { sessionId } = req.params;
+
+    if (!sessions.has(sessionId)) {
+        if (GAME_WORDS.length === 0) return res.status(500).json({ error: 'No words' });
+        const newWord = getRandomWord();
+        sessions.set(sessionId, {
+            targetWord: newWord,
+            guesses: [],
+            status: 'playing',
+            stage: 1,
+            maxStages: TARGET_STAGES,
+            lastActivity: Date.now()
+        });
+        console.log(`🆕 Session ${sessionId}: Start Stage 1`);
+        console.log(`👀 SOLUCIÓN (Stage 1): ${newWord}`); 
     }
-    return 'absent';
-  });
-  
-  const isCorrect = normalizedGuess === normalizedWord;
-  
-  console.log(`✓ Validate: ${normalizedGuess} vs ${normalizedWord} (${normalizedWord.length} letters) = ${isCorrect ? 'CORRECT ✓' : 'WRONG ✗'}`);
-  
-  res.json({
-    evaluation,
-    isCorrect,
-    isValid: ALL_WORDS.includes(normalizedGuess)
-  });
+
+    const session = sessions.get(sessionId)!;
+        console.log(`👀 SOLUCIÓN (Stage 1): ${session.targetWord}`); 
+
+    return res.json({
+        wordLength: session.targetWord.length,
+        guesses: session.guesses,
+        status: session.status,
+        stage: session.stage,      // Enviamos la ronda actual
+        maxStages: session.maxStages,
+        solution: session.status !== 'playing' ? session.targetWord : null 
+    });
+
 });
 
-// POST /api/wordle/result - Guardar resultado
-app.post('/api/wordle/result', (req, res) => {
-  const { word, attempts, won, playerId } = req.body;
-  console.log(`📊 Game result:`, { word, attempts, won, playerId });
-  res.json({ success: true, message: 'Result saved' });
+app.post('/api/wordle/guess', (req: Request, res: Response): any => {
+    const { sessionId, guess } = req.body;
+    
+    if (!sessions.has(sessionId)) return res.status(404).json({ error: 'Session not found' });
+    const session = sessions.get(sessionId)!;
+
+    if (session.status !== 'playing') return res.status(400).json({ error: 'Game ended' });
+    
+    const normalizedGuess = normalizeWord(guess);
+    const target = session.targetWord;
+
+    // Validaciones
+    if (normalizedGuess.length !== target.length) return res.json({ success: false, message: 'Longitud incorrecta' });
+    if (!ALL_WORDS.includes(normalizedGuess)) return res.json({ success: false, message: 'Palabra no válida' });
+
+    // Evaluar
+    const evaluation = normalizedGuess.split('').map((letter, index) => {
+        if (target[index] === letter) return 'correct';
+        if (target.includes(letter)) {
+             const letterCount = target.split('').filter(l => l === letter).length;
+             const correctCount = target.split('').filter((l, i) => l === letter && normalizedGuess[i] === letter).length;
+             const presentCount = normalizedGuess.split('').filter((l, i) => l === letter && target[i] !== letter && i < index).length;
+             if (presentCount < letterCount - correctCount) return 'present';
+        }
+        return 'absent';
+    });
+
+    const newGuessObj = { word: normalizedGuess, evaluation };
+    session.guesses.push(newGuessObj);
+    session.lastActivity = Date.now();
+
+    // --- LÓGICA DE VICTORIA / DERROTA / SIGUIENTE NIVEL ---
+    
+    if (normalizedGuess === target) {
+        // ¡ACERTÓ LA PALABRA!
+        if (session.stage < session.maxStages) {
+            // Aún quedan rondas: preparamos la siguiente
+            session.stage++;
+            session.targetWord = getRandomWord();
+            session.guesses = []; // Limpiamos tablero
+            console.log(`🆙 Session ${sessionId}: Level Up to Stage ${session.stage}`);
+        } else {
+            // Era la última ronda: ¡VICTORIA TOTAL!
+            session.status = 'won';
+            console.log(`🏆 Session ${sessionId}: WON GAME`);
+        }
+    } else if (session.guesses.length >= MAX_ATTEMPTS) {
+        // Se acabaron los intentos: PERDIÓ TODO
+        session.status = 'lost';
+        console.log(`💀 Session ${sessionId}: LOST at Stage ${session.stage}`);
+    }
+
+    res.json({ 
+        success: true, 
+        guesses: session.guesses, 
+        status: session.status,
+        stage: session.stage,
+        solution: session.status !== 'playing' ? session.targetWord : null
+    });
 });
 
-// GET /health - Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    service: 'wordle-1-server',
-    validWords: ALL_WORDS.length,
-    gameWords: GAME_WORDS.length,
-    port: port
-  });
-});
-
-// GET /stats - Estadísticas de palabras
-app.get('/stats', (req, res) => {
-  // Contar palabras por longitud
-  const lengthStats: { [key: number]: number } = {};
-  
-  GAME_WORDS.forEach(word => {
-    const len = word.length;
-    lengthStats[len] = (lengthStats[len] || 0) + 1;
-  });
-  
-  res.json({
-    totalValidWords: ALL_WORDS.length,
-    totalGameWords: GAME_WORDS.length,
-    wordsByLength: lengthStats
-  });
-});
-
-// Iniciar servidor
 app.listen(port, () => {
-  console.log(`\n🎮 Wordle Server (Minigame 1)`);
-  console.log(`📡 Running on: http://localhost:${port}`);
-  console.log(`🔢 Port: ${port}`);
-  console.log(`📚 Valid words (spanish.txt): ${ALL_WORDS.length}`);
-  console.log(`🎯 Game words (spanish.json): ${GAME_WORDS.length} (any length)`);
-  console.log(`✅ Ready!\n`);
+  console.log(`🎮 Wordle Server (3 Stages) running on ${port}`);
 });

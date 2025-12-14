@@ -341,3 +341,34 @@
     font-size: 12px;
   }
 }
+
+.solution-box {
+    margin: 20px 0;
+    padding: 15px;
+    background: rgba(255, 0, 0, 0.1);
+    border: 1px solid #ff4444;
+    border-radius: 8px;
+    animation: fadeIn 0.5s ease;
+}
+
+.solution-box p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #ffaaaa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.highlight-danger {
+    margin: 10px 0 0 0;
+    font-size: 2rem;
+    color: #ff4444; /* Rojo intenso */
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+    letter-spacing: 4px;
+    font-family: 'Courier New', monospace; /* O tu fuente retro */
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
