@@ -1,22 +1,18 @@
 FROM node:20-alpine
 
-# Establecer directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias
+# 1. Instalar dependencias primero (para aprovechar la caché de Docker)
 COPY package*.json ./
+# Usamos npm install en lugar de ci para desarrollo por si el lockfile varía
+RUN npm install
 
-# Instalar dependencias
-RUN npm ci --only=production
-
-# Copiar el código fuente
+# 2. Copiar el código fuente
 COPY . .
 
-# Compilar TypeScript (si es necesario)
-RUN npm run build || echo "No build script found"
-
-# Exponer el puerto
+# 3. Exponer el puerto del servidor (ajusta si usas otro en tu index.ts)
+ENV PORT=1234
 EXPOSE 1234
 
-# Comando para iniciar
-CMD ["node", "dist/index.js"]
+# 4. Comando de inicio para desarrollo (asegúrate de que en package.json tengas "dev")
+CMD ["npm", "run", "dev"]
