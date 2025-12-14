@@ -1,7 +1,11 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json ./
-RUN npm i
+# Ensure Next.js binary is executable even if upstream permissions are off
+RUN npm i && \
+    chmod +x node_modules/next/dist/bin/next && \
+    mkdir -p node_modules/.bin && \
+    ln -sf ../next/dist/bin/next node_modules/.bin/next
 
 FROM node:22-alpine AS build
 WORKDIR /app
