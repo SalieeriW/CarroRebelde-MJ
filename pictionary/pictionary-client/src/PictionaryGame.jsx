@@ -2,12 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import './styles/pictionary.css'; 
 
 const SERVER_URL = 'http://localhost:2234';
-
-// Colores disponibles
 const PALETTE_COLORS = ['#ffffff', '#f9d71c', '#e94560', '#00ffcc', '#3498db', '#2ecc71', '#9b59b6', '#e67e22'];
 
 function PictionaryGame() {
-  // --- ESTADOS ---
   const searchParams = new URLSearchParams(window.location.search);
   const urlSessionId = searchParams.get('sessionId');
   const urlRole = searchParams.get('role');
@@ -15,16 +12,20 @@ function PictionaryGame() {
 
   const [sessionId] = useState(urlSessionId || Math.random().toString(36).substring(7));
   const [role, setRole] = useState(null);
+  
+  // Estados de Juego
   const [word, setWord] = useState('');
   const [wordLength, setWordLength] = useState(0); 
-  
+  const [round, setRound] = useState(1);
+  const [totalRounds, setTotalRounds] = useState(3);
+
   const [guess, setGuess] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
-  const [isWon, setIsWon] = useState(false);
+  const [isRoundWon, setIsRoundWon] = useState(false); 
+  const [isGameOver, setIsGameOver] = useState(false); 
+  
   const [currentColor, setCurrentColor] = useState(PALETTE_COLORS[0]);
   const [showHelp, setShowHelp] = useState(false);
-
-  // Estado para el feedback visual al copiar
   const [copyFeedback, setCopyFeedback] = useState(null);
 
   const canvasRef = useRef(null);
@@ -32,9 +33,19 @@ function PictionaryGame() {
   const lastPos = useRef({ x: 0, y: 0 });
   const inputRef = useRef(null);
 
-  // --- EFECTOS ---
+  // --- SOLUCIÓN DEL ERROR (Referencias para el Intervalo) ---
+  // Usamos refs para que el setInterval pueda leer el valor ACTUAL, no el viejo
+  const roundRef = useRef(round);
+  const isRoundWonRef = useRef(isRoundWon);
 
-  // Tecla F10
+  // Mantenemos las refs sincronizadas con el estado
+  useEffect(() => {
+    roundRef.current = round;
+    isRoundWonRef.current = isRoundWon;
+  }, [round, isRoundWon]);
+  // ----------------------------------------------------------
+
+  // Tecla F10 Ayuda
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F10') {
@@ -46,71 +57,131 @@ function PictionaryGame() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Inicializar rol si viene en la URL
+  // Inicializar según Rol
   useEffect(() => {
     if (urlRole === 'drawer') initDrawer();
     else if (urlRole === 'guesser') initGuesser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlRole]);
 
-  // Fondo del canvas
+  // Limpiar/Pintar fondo negro al cambiar de rol o de ronda
   useEffect(() => {
-    if (role && canvasRef.current) {
+    if ((role || isRoundWon === false) && canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
         ctx.fillStyle = '#16213e'; 
         ctx.fillRect(0, 0, 800, 600);
     }
-  }, [role]);
+  }, [role, round, isRoundWon]);
 
-  // --- LOGICA DEL JUEGO ---
+  // --- LOGICA ---
 
   const initDrawer = async () => {
     setRole('drawer');
-    try {
-      const res = await fetch(`${SERVER_URL}/api/pictionary/word?sessionId=${sessionId}`);
-      const data = await res.json();
-      setWord(data.word);
-    } catch (e) { console.error(e); }
+    fetchWord();
+    const interval = setInterval(checkGameState, 1000);
+    return () => clearInterval(interval);
   };
 
   const initGuesser = () => {
     setRole('guesser');
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`${SERVER_URL}/api/pictionary/canvas/${sessionId}`);
-        const data = await res.json();
-        
-        // Capturar longitud para limitar el input
-        if (data.wordLength && wordLength === 0) {
-            setWordLength(data.wordLength);
-        }
-
-        if (data.solved) {
-            handleWin();
-            clearInterval(interval);
-            return;
-        }
-        if (data.canvasData) {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = canvasRef.current;
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-            }
-          };
-          img.src = data.canvasData;
-        }
-      } catch (e) { console.error("Polling error", e); }
-    }, 1000); 
+    const interval = setInterval(checkGameState, 1000); 
     return () => clearInterval(interval);
   };
 
-  const handleWin = () => {
-      setIsWon(true);
-      setStatusMsg("*** MISION COMPLETADA ***");
-      if (returnUrl) setTimeout(() => { window.location.href = returnUrl; }, 3000);
+  const fetchWord = async () => {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/pictionary/word?sessionId=${sessionId}`);
+      const data = await res.json();
+      setWord(data.word);
+      setRound(data.round);
+      setTotalRounds(data.totalRounds);
+    } catch (e) { console.error(e); }
   };
 
+  // Función principal de bucle (Polling)
+  const checkGameState = async () => {
+    try {
+        const res = await fetch(`${SERVER_URL}/api/pictionary/canvas/${sessionId}`);
+        const data = await res.json();
+        
+        // CORRECCIÓN: Usamos roundRef.current para comparar
+        if (data.round > roundRef.current) {
+            handleNextRoundLocal(data);
+        }
+
+        setRound(data.round);
+        setTotalRounds(data.totalRounds);
+
+        if (data.gameOver) {
+            setIsGameOver(true);
+            setStatusMsg("*** JUEGO COMPLETADO ***");
+            if (returnUrl) setTimeout(() => window.location.href = returnUrl, 3000);
+            return;
+        }
+
+        // CORRECCIÓN: Usamos isRoundWonRef.current para evitar bucles
+        if (data.solved && !isRoundWonRef.current) {
+            handleRoundWin(data.round);
+        }
+
+        if (!data.solved) {
+            if (data.wordLength) setWordLength(data.wordLength);
+            
+            if (data.canvasData) {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = canvasRef.current;
+                    if (canvas && !isDrawing.current) { 
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                    }
+                };
+                img.src = data.canvasData;
+            } else if (role === 'guesser') {
+                 const canvas = canvasRef.current;
+                 if(canvas) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#16213e'; 
+                    ctx.fillRect(0, 0, 800, 600);
+                 }
+            }
+        }
+    } catch (e) { console.error("Polling error", e); }
+  };
+
+  const handleRoundWin = (currentRoundServer) => {
+      setIsRoundWon(true); // Esto actualiza el estado y luego el Ref
+      setStatusMsg(`¡CORRECTO! RONDA ${currentRoundServer} COMPLETADA`);
+      
+      if (role === 'drawer') {
+          setTimeout(triggerNextRound, 3000);
+      }
+  };
+
+  const triggerNextRound = async () => {
+      await fetch(`${SERVER_URL}/api/pictionary/next-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      fetchWord();
+  };
+
+  const handleNextRoundLocal = (data) => {
+      setIsRoundWon(false);
+      setGuess('');
+      setStatusMsg('');
+      setWordLength(data.wordLength || 0);
+      
+      // Limpiar visualmente
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        ctx.fillStyle = '#16213e'; 
+        ctx.fillRect(0, 0, 800, 600);
+      }
+  };
+
+  // --- DIBUJO ---
   const startDrawing = (e) => {
     isDrawing.current = true;
     const canvas = canvasRef.current;
@@ -157,6 +228,7 @@ function PictionaryGame() {
     stopDrawing(); 
   };
 
+  // --- ADIVINAR ---
   const submitGuess = async () => {
     if (!guess) return;
     const res = await fetch(`${SERVER_URL}/api/pictionary/guess`, {
@@ -167,8 +239,8 @@ function PictionaryGame() {
     const data = await res.json();
     
     if (data.correct) {
-      handleWin();
-      setStatusMsg(`[ CORRECTO: ${data.word.toUpperCase()} ]`);
+      // No hacemos nada aquí, esperamos al polling para sincronizar
+      setStatusMsg("¡CORRECTO! ESPERANDO...");
     } else {
       setStatusMsg("[ ERROR: INTENTALO DE NUEVO ]");
       setGuess('');
@@ -178,14 +250,12 @@ function PictionaryGame() {
 
   const handleInputChange = (e) => {
       const val = e.target.value.toUpperCase();
-      if (wordLength > 0 && val.length > wordLength) {
-          return;
-      }
+      if (wordLength > 0 && val.length > wordLength) return;
       setGuess(val);
   };
 
   const focusInput = () => {
-      if (inputRef.current && !isWon) inputRef.current.focus();
+      if (inputRef.current && !isRoundWon && !isGameOver) inputRef.current.focus();
   };
 
   const copyToClipboard = (text, type) => {
@@ -194,7 +264,6 @@ function PictionaryGame() {
     setTimeout(() => setCopyFeedback(null), 2000);
   };
 
-  // --- MODAL DE AYUDA ---
   const HelpModal = () => (
     <div className="retro-modal-overlay" onClick={() => setShowHelp(false)}>
       <div className="retro-modal" onClick={e => e.stopPropagation()}>
@@ -202,16 +271,10 @@ function PictionaryGame() {
         <div className="modal-content">
           <p>TECLA [F10] : MENU</p>
           <br/>
-          <p className="highlight">ROL: DIBUJANTE</p>
+          <p className="highlight">OBJETIVO</p>
           <ul className="retro-list">
-            <li>Dibuja la palabra objetivo.</li>
-            <li>No escribas letras.</li>
-          </ul>
-          <br/>
-          <p className="highlight">ROL: ADIVINADOR</p>
-          <ul className="retro-list">
-            <li>Mira la pantalla.</li>
-            <li>Escribe la palabra y pulsa ENTER.</li>
+            <li>Completa 3 rondas.</li>
+            <li>Dibuja o adivina la palabra secreta.</li>
           </ul>
         </div>
         <button className="retro-btn secondary full-width" onClick={() => setShowHelp(false)}>
@@ -221,8 +284,7 @@ function PictionaryGame() {
     </div>
   );
 
-  // --- RENDERIZADO ---
-
+  // --- RENDER INICIAL (Lobby) ---
   if (!role) {
     const baseUrl = window.location.href.split('?')[0];
     const drawerUrl = `${baseUrl}?sessionId=${sessionId}&role=drawer`;
@@ -233,10 +295,9 @@ function PictionaryGame() {
         {showHelp && <HelpModal />}
         <div className="retro-header">
             <h1 className="retro-title">PICTIONARY.EXE</h1>
-            <p className="retro-subtitle">INICIAR SESIÓN MULTIJUGADOR </p>
+            <p className="retro-subtitle"> MULTIJUGADOR (3 RONDAS) </p>
         </div>
 
-        {/* PANEL DE CONEXIÓN */}
         <div className="retro-card connection-panel">
             <div className="connection-row">
                 <div className="conn-info">
@@ -244,67 +305,59 @@ function PictionaryGame() {
                     <input readOnly value={drawerUrl} className="retro-input-readonly" />
                 </div>
                 <div className="conn-actions">
-                    <button 
-                        className="retro-btn sm" 
-                        onClick={() => copyToClipboard(drawerUrl, 'drawer')}
-                    >
+                    <button className="retro-btn sm" onClick={() => copyToClipboard(drawerUrl, 'drawer')}>
                         {copyFeedback === 'drawer' ? '¡COPIADO!' : '[ COPIAR ]'}
                     </button>
-                    <a href={drawerUrl} target="_blank" rel="noreferrer" className="retro-btn sm action">
-                        [ ABRIR ↗ ]
-                    </a>
+                    <a href={drawerUrl} target="_blank" rel="noreferrer" className="retro-btn sm action">[ ABRIR ↗ ]</a>
                 </div>
             </div>
-
             <div className="divider-dashed"></div>
-
             <div className="connection-row">
                 <div className="conn-info">
                     <span className="badge guesser">JUGADOR 2 (ADIVINA)</span>
                     <input readOnly value={guesserUrl} className="retro-input-readonly" />
                 </div>
                 <div className="conn-actions">
-                    <button 
-                        className="retro-btn sm" 
-                        onClick={() => copyToClipboard(guesserUrl, 'guesser')}
-                    >
+                    <button className="retro-btn sm" onClick={() => copyToClipboard(guesserUrl, 'guesser')}>
                         {copyFeedback === 'guesser' ? '¡COPIADO!' : '[ COPIAR ]'}
                     </button>
-                    <a href={guesserUrl} target="_blank" rel="noreferrer" className="retro-btn sm action">
-                        [ ABRIR ↗ ]
-                    </a>
+                    <a href={guesserUrl} target="_blank" rel="noreferrer" className="retro-btn sm action">[ ABRIR ↗ ]</a>
                 </div>
             </div>
-        </div>
-        
-        <div className="retro-controls-center">
-             <p className="status-blink">ESPERANDO JUGADORES...</p>
         </div>
         <div className="footer-hint">PRESIONA [F10] PARA AYUDA</div>
       </div>
     );
   }
 
+  // --- RENDER JUEGO ---
   return (
     <div className="retro-game">
       {showHelp && <HelpModal />}
       
       <div className="retro-header">
-        <h2 className="retro-title">
-            {role === 'drawer' ? 'MODO: DIBUJANTE' : 'MODO: ADIVINADOR'}
-        </h2>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <h2 className="retro-title">
+                {role === 'drawer' ? 'DIBUJANTE' : 'ADIVINADOR'}
+            </h2>
+            <div className="retro-id-box" style={{padding: '2px 8px'}}>
+                RONDA: {round} / {totalRounds}
+            </div>
+        </div>
         
-        {role === 'drawer' && (
+        {role === 'drawer' && !isGameOver && (
             <div className="retro-word-box">
                 OBJETIVO: <span className="highlight">{word.toUpperCase()}</span>
             </div>
         )}
         
-        {isWon && <div className="retro-win-msg">{statusMsg}</div>}
-        {!isWon && statusMsg && <div className="retro-status">{statusMsg}</div>}
+        {/* Mensajes de Estado */}
+        {isGameOver && <div className="retro-win-msg">*** JUEGO COMPLETADO ***</div>}
+        {!isGameOver && isRoundWon && <div className="retro-win-msg">¡RONDA COMPLETADA! SIGUIENTE NIVEL EN 3s...</div>}
+        {!isGameOver && !isRoundWon && statusMsg && <div className="retro-status">{statusMsg}</div>}
       </div>
 
-      {role === 'drawer' && !isWon && (
+      {role === 'drawer' && !isRoundWon && !isGameOver && (
         <div className="retro-palette-container">
             {PALETTE_COLORS.map(color => (
                 <button
@@ -330,13 +383,12 @@ function PictionaryGame() {
       </div>
 
       <div className="retro-controls">
-        {role === 'drawer' && (
+        {role === 'drawer' && !isRoundWon && !isGameOver && (
            <button className="retro-btn danger" onClick={clearCanvas}>[ BORRAR PANTALLA ]</button>
         )}
 
-        {role === 'guesser' && !isWon && (
+        {role === 'guesser' && !isRoundWon && !isGameOver && (
           <div className="guesser-container">
-            {/* Visualización de huecos tipo Ahorcado */}
             <div className="word-slots" onClick={focusInput}>
                 {Array.from({ length: wordLength || Math.max(guess.length + 1, 6) }).map((_, i) => (
                     <div key={i} className={`slot ${guess[i] ? 'filled' : ''}`}>
@@ -344,8 +396,6 @@ function PictionaryGame() {
                     </div>
                 ))}
             </div>
-            
-            {/* Input Invisible */}
             <input 
               ref={inputRef}
               className="ghost-input"
@@ -357,7 +407,6 @@ function PictionaryGame() {
               autoComplete="off"
               maxLength={wordLength} 
             />
-            
             <button className="retro-btn" onClick={submitGuess}>[ ENTER ]</button>
           </div>
         )}

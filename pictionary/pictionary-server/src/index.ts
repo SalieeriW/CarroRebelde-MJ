@@ -26,33 +26,40 @@ const normalizeWord = (word: string): string => {
         .trim();
 };
 
-// Cargar spanish.txt
+// Cargar archivos de forma segura
 try {
     const txtPath = join(process.cwd(), 'resources', 'spanish.txt');
     const txtData = readFileSync(txtPath, 'utf-8');
     ALL_WORDS = txtData.split('\n').map(w => normalizeWord(w)).filter(w => w.length > 0);
 } catch (error) {
-    console.error('❌ Error loading spanish.txt', error);
-    ALL_WORDS = [];
+    console.error('⚠️ Warning: spanish.txt not found. Validation disabled.');
 }
 
-// Cargar spanish.json
 try {
     const jsonPath = join(process.cwd(), 'resources', 'spanish.json');
     const jsonData = readFileSync(jsonPath, 'utf-8');
     const words = JSON.parse(jsonData);
     GAME_WORDS = words.map((w: string) => normalizeWord(w)).filter((w: string) => w.length > 0);
-    console.log(`✅ Loaded ${GAME_WORDS.length} game words from spanish.json`);
+    console.log(`✅ Loaded ${GAME_WORDS.length} game words.`);
 } catch (error) {
-    console.error('❌ Error loading spanish.json', error);
+    console.error('⚠️ Warning: spanish.json not found. Using default words.');
     GAME_WORDS = ['GATO', 'PERRO', 'CASA', 'SOL'];
 }
+
+const getRandomWord = () => {
+    if (GAME_WORDS.length === 0) return 'ERROR';
+    const randomIndex = randomInt(0, GAME_WORDS.length);
+    return GAME_WORDS[randomIndex];
+};
 
 // ============================================
 // 2. ESTADO DEL JUEGO
 // ============================================
 
 interface GameSession {
+    round: number;          
+    totalRounds: number;    
+    score: number;
     word: string;       
     canvasData: string; 
     guesses: string[];
@@ -62,12 +69,11 @@ interface GameSession {
 
 const sessions = new Map<string, GameSession>();
 
+// Limpieza de sesiones viejas
 setInterval(() => {
     const now = Date.now();
     sessions.forEach((session, id) => {
-        if (now - session.lastActivity > 3600000) { 
-            sessions.delete(id);
-        }
+        if (now - session.lastActivity > 3600000) sessions.delete(id);
     });
 }, 600000); 
 
@@ -75,100 +81,151 @@ setInterval(() => {
 // 3. ENDPOINTS API
 // ============================================
 
-// --- DRAWER: Obtener palabra e iniciar sesión ---
+// --- INICIAR / RECUPERAR SESIÓN ---
 app.get('/api/pictionary/word', (req: Request, res: Response): any => {
     const sessionId = req.query.sessionId as string;
     
     if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    if (!sessions.has(sessionId)) {
-        if (GAME_WORDS.length === 0) return res.status(500).json({ error: 'No words loaded' });
-        
-        const randomIndex = randomInt(0, GAME_WORDS.length);
-        const selectedWord = GAME_WORDS[randomIndex];
+    // === FIX PARA DOCKER/REFRESH ===
+    // Si la sesión existe pero ya terminó, la borramos para empezar de 0
+    if (sessions.has(sessionId)) {
+        const existing = sessions.get(sessionId)!;
+        if (existing.round > existing.totalRounds) {
+            console.log(`♻️ Resetting finished session: ${sessionId}`);
+            sessions.delete(sessionId);
+        }
+    }
 
+    if (!sessions.has(sessionId)) {
+        const initialWord = getRandomWord();
         sessions.set(sessionId, {
-            word: selectedWord,
+            round: 1,
+            totalRounds: 3,
+            score: 0,
+            word: initialWord,
             canvasData: '',
             guesses: [],
             solved: false,
             lastActivity: Date.now()
         });
-        console.log(`🆕 Session ${sessionId}: Word is "${selectedWord}"`);
+        console.log(`🆕 New Session: ${sessionId} | Word: ${initialWord}`);
     }
 
     const session = sessions.get(sessionId)!;
-    res.json({ word: session.word, sessionId });
+    
+    res.json({ 
+        word: session.word, 
+        sessionId,
+        round: session.round,
+        totalRounds: session.totalRounds
+    });
 });
 
-// --- DRAWER: Subir dibujo ---
+// --- DIBUJAR ---
 app.post('/api/pictionary/draw', (req: Request, res: Response): any => {
     const { sessionId, canvasData } = req.body;
-    
-    if (!sessions.has(sessionId)) return res.status(404).json({ error: 'Session not found' });
-
-    const session = sessions.get(sessionId)!;
-    session.canvasData = canvasData;
-    session.lastActivity = Date.now();
-    
+    if (sessions.has(sessionId)) {
+        const session = sessions.get(sessionId)!;
+        session.canvasData = canvasData;
+        session.lastActivity = Date.now();
+    }
     res.json({ success: true });
 });
 
-// --- GUESSER: Ver dibujo Y OBTENER LONGITUD ---
+// --- POLLING (ESTADO) ---
 app.get('/api/pictionary/canvas/:sessionId', (req: Request, res: Response): any => {
     const { sessionId } = req.params;
-    
     const session = sessions.get(sessionId);
     
-    // Si no hay sesión, devolvemos wordLength: 0
-    if (!session) return res.json({ canvasData: '', solved: false, wordLength: 0 }); 
+    if (!session) {
+        return res.json({ 
+            canvasData: '', solved: false, wordLength: 0,
+            round: 1, totalRounds: 3, gameOver: false 
+        }); 
+    }
 
     res.json({ 
         canvasData: session.canvasData,
         solved: session.solved,
-        wordLength: session.word.length // <--- ¡AQUÍ ESTÁ LA CLAVE! Enviamos el largo
+        wordLength: session.word.length,
+        round: session.round,
+        totalRounds: session.totalRounds,
+        gameOver: session.round > session.totalRounds
     });
 });
 
-// --- GUESSER: Adivinar ---
 app.post('/api/pictionary/guess', (req: Request, res: Response): any => {
     const { sessionId, guess } = req.body;
+    const session = sessions.get(sessionId);
     
-    if (!sessions.has(sessionId)) return res.status(404).json({ error: 'Session not found' });
-    if (!guess) return res.status(400).json({ error: 'Guess required' });
+    console.log(`🔍 Guess received: "${guess}" for session ${sessionId}`);
+    console.log(`📊 Current state:`, {
+        word: session?.word,
+        round: session?.round,
+        solved: session?.solved
+    });
+    
+    if (!session) return res.status(404).json({ error: 'No session' });
+    if (session.round > session.totalRounds) return res.json({ correct: false });
 
-    const session = sessions.get(sessionId)!;
-    const normalizedGuess = normalizeWord(guess);
-    
+    const normalizedGuess = normalizeWord(guess || '');
     const isCorrect = normalizedGuess === session.word;
-    const isValidWord = ALL_WORDS.includes(normalizedGuess); 
+    
+    console.log(`✓ Comparison: "${normalizedGuess}" === "${session.word}" ? ${isCorrect}`);
+    
+    if (isCorrect) {
+        session.solved = true;
+        console.log(`🎉 Round ${session.round} WON!`);
+        
+        setTimeout(() => {
+            if (session.solved) {
+                const oldRound = session.round;
+                session.round++;
+                
+                if (session.round <= session.totalRounds) {
+                    session.word = getRandomWord();
+                    session.canvasData = '';
+                    session.solved = false;
+                    session.guesses = [];
+                    console.log(`⏩ Advanced: Round ${oldRound} → ${session.round}, new word: ${session.word}`);
+                } else {
+                    console.log(`🏁 Game finished!`);
+                }
+            }
+        }, 3000);
+    }
 
-    session.guesses.push(normalizedGuess);
-    if (isCorrect) session.solved = true;
-    session.lastActivity = Date.now();
-
-    console.log(`🤔 Guess Session ${sessionId}: "${normalizedGuess}" vs "${session.word}" = ${isCorrect ? 'WIN' : 'NO'}`);
-
-    res.json({ 
-        correct: isCorrect, 
-        word: isCorrect ? session.word : null, 
-        isValidWord: isValidWord 
-    });
+    res.json({ correct: isCorrect, word: isCorrect ? session.word : null });
 });
+// --- SIGUIENTE RONDA (Ahora opcional, ya se hace automático) ---
+app.post('/api/pictionary/next-round', (req: Request, res: Response): any => {
+    const { sessionId } = req.body;
+    const session = sessions.get(sessionId);
 
-// --- HEALTH CHECK ---
-app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        service: 'pictionary-2-server',
-        activeSessions: sessions.size,
-        wordsLoaded: GAME_WORDS.length
-    });
+    if (!session) return res.json({ success: false });
+
+    // Si ya se procesó automáticamente, solo confirmar
+    if (session.round > 1 && !session.solved) {
+        return res.json({ success: true, round: session.round });
+    }
+
+    // Forzar avance manual (por si acaso)
+    if (session.solved || session.round === 1) {
+        session.round++;
+        if (session.round <= session.totalRounds) {
+            session.word = getRandomWord();
+            session.canvasData = '';
+            session.solved = false;
+            session.guesses = [];
+            console.log(`⏩ Manual Next Round (${session.round}): ${session.word}`);
+        }
+        res.json({ success: true, round: session.round });
+    } else {
+        res.json({ success: false });
+    }
 });
 
 app.listen(PORT, () => {
-    console.log(`\n🎨 Pictionary Server (Minigame 2)`);
-    console.log(`📡 Running on: http://localhost:${PORT}`);
-    console.log(`📚 Game Words loaded: ${GAME_WORDS.length}`);
-    console.log(`📚 Dictionary Words loaded: ${ALL_WORDS.length}`);
+    console.log(`\n🎨 Server running inside Docker on port ${PORT}`);
 });
