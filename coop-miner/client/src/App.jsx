@@ -93,11 +93,12 @@ const App = () => {
 
           <div className="lobby-section">
             <div className="section-header">Descripción del reto</div>
-            <p>Recolecten {game.state?.goalScore || 0} puntos en equipo. A controla el ángulo, B dispara y acelera.</p>
+            <p>Recolecten {game.state?.goalScore || 0} puntos en equipo. ¡Cada jugador ve información diferente!</p>
             <p className="hint">
               {levelInfo} · Objetivo: {status} · Turnos: {levelMeta?.turns || '—'}
             </p>
-            <p className="hint">💡 Usen comunicación de voz para coordinar!</p>
+            <p className="hint">🔍 A ve ICONOS · B ve VALORES y PESO</p>
+            <p className="hint">⭐ B marca objetivos (+5 bonus) · 💬 ¡Comuníquense!</p>
           </div>
 
           <div className="lobby-section">
@@ -106,7 +107,7 @@ const App = () => {
               <div className={`player-item ${aStatus.ready ? 'ready' : ''}`}>
                 <div>
                   <div className="seat-title">Jugador A · Operador del Gancho</div>
-                  <div className="seat-desc">Controla el ángulo (← →) y dispara (ESPACIO).</div>
+                  <div className="seat-desc">Ve solo ICONOS. Controla ángulo (← →) y lanza (ESPACIO).</div>
                   <div className="seat-status">Estado: {aStatus.label} · Listo: {aStatus.ready ? 'Sí' : 'No'}</div>
                 </div>
                 <div className="seat-actions">
@@ -117,8 +118,8 @@ const App = () => {
 
               <div className={`player-item ${bStatus.ready ? 'ready' : ''}`}>
                 <div>
-                  <div className="seat-title">Jugador B · Acelerador</div>
-                  <div className="seat-desc">Acelera el gancho (SHIFT/↓) para alcanzar más lejos.</div>
+                  <div className="seat-title">Jugador B · Estratega</div>
+                  <div className="seat-desc">Ve VALORES y PESO. Acelera (SHIFT/↓) y marca objetivos (CLICK).</div>
                   <div className="seat-status">Estado: {bStatus.label} · Listo: {bStatus.ready ? 'Sí' : 'No'}</div>
                 </div>
                 <div className="seat-actions">
@@ -193,16 +194,17 @@ const App = () => {
           gameState={game.state}
           onObjectCollected={handleObjectCollected}
           onHookStateUpdate={game.updateHookState}
+          onMarkTarget={game.markTarget}
         />
       </div>
 
       <div className="game-bottom-bar">
         <div className="role-info">
           {game.myRole === 'A' && (
-            <span className="role-label">Tu rol: Operador del Gancho (A) - Controlas ángulo y disparo</span>
+            <span className="role-label">Tu rol: Operador (A) - Ves iconos · Controlas ángulo y disparo</span>
           )}
           {game.myRole === 'B' && (
-            <span className="role-label">Tu rol: Acelerador (B) - Aceleras el gancho</span>
+            <span className="role-label">Tu rol: Estratega (B) - Ves valores/peso · Aceleras y marcas objetivos (CLICK)</span>
           )}
         </div>
       </div>

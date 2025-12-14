@@ -365,9 +365,18 @@ app.post('/rooms/:code/action/hook', (req, res) => {
   }
 
   obj.taken = true;
+
+  // Check if this was the marked target for bonus points
+  const wasMarked = room.state.pendingTargetId === obj.id;
   room.state.pendingTargetId = null;
 
-  const gain = applySpecials(room, obj, obj.value);
+  let gain = applySpecials(room, obj, obj.value);
+
+  // Bonus points for catching marked target
+  if (wasMarked) {
+    gain += 5;
+  }
+
   room.state.score += gain;
   if (room.state.score < 0) room.state.score = 0;
   room.state.lastHit = {

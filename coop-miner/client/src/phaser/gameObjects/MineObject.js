@@ -1,5 +1,5 @@
 export default class MineObject {
-  constructor(scene, data) {
+  constructor(scene, data, playerRole) {
     this.scene = scene;
     this.id = data.id;
     this.type = data.type;
@@ -9,6 +9,7 @@ export default class MineObject {
     this.size = data.size;
     this.special = data.special;
     this.taken = data.taken || false;
+    this.playerRole = playerRole;
 
     // Size mapping (larger visual difference)
     const sizeMap = {
@@ -31,36 +32,51 @@ export default class MineObject {
     this.bg.setStrokeStyle(2, 0x000000);
     this.container.add(this.bg);
 
-    // Icon text
-    this.sprite = scene.add.text(0, 0, this.icon, {
-      fontSize: `${sizeConfig.fontSize}px`,
-      align: 'center',
-    });
-    this.sprite.setOrigin(0.5);
-    this.container.add(this.sprite);
+    // Icon text - Player A sees clearly, Player B sees grayed out
+    if (this.playerRole === 'A') {
+      this.sprite = scene.add.text(0, 0, this.icon, {
+        fontSize: `${sizeConfig.fontSize}px`,
+        align: 'center',
+      });
+      this.sprite.setOrigin(0.5);
+      this.container.add(this.sprite);
+    } else {
+      this.sprite = scene.add.text(0, 0, '?', {
+        fontSize: `${sizeConfig.fontSize}px`,
+        align: 'center',
+        fill: '#888888',
+      });
+      this.sprite.setOrigin(0.5);
+      this.container.add(this.sprite);
+    }
 
-    // Value text (visible to both players)
-    this.valueText = scene.add.text(0, sizeConfig.radius + 15, `+${this.value}`, {
-      fontSize: '14px',
-      fontFamily: 'monospace',
-      fill: this.value >= 0 ? '#00ff00' : '#ff0000',
-      stroke: '#000000',
-      strokeThickness: 2,
-    });
-    this.valueText.setOrigin(0.5);
-    this.container.add(this.valueText);
+    // Value text - Only visible to Player B
+    if (this.playerRole === 'B') {
+      this.valueText = scene.add.text(0, sizeConfig.radius + 15, `${this.value >= 0 ? '+' : ''}${this.value}`, {
+        fontSize: '14px',
+        fontFamily: 'monospace',
+        fill: this.value >= 0 ? '#00ff00' : '#ff0000',
+        stroke: '#000000',
+        strokeThickness: 2,
+      });
+      this.valueText.setOrigin(0.5);
+      this.container.add(this.valueText);
+    }
 
-    // Size indicator
-    const sizeLabel = this.size === 'small' ? 'S' : this.size === 'large' ? 'L' : 'M';
-    this.sizeText = scene.add.text(0, sizeConfig.radius + 30, sizeLabel, {
-      fontSize: '12px',
-      fontFamily: 'monospace',
-      fill: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 2,
-    });
-    this.sizeText.setOrigin(0.5);
-    this.container.add(this.sizeText);
+    // Size and weight indicator - Only visible to Player B
+    if (this.playerRole === 'B') {
+      const sizeLabel = this.size === 'small' ? 'S' : this.size === 'large' ? 'L' : 'M';
+      const weightLabel = this.weight === 'light' ? '⚡' : this.weight === 'heavy' ? '🔩' : this.weight === 'very_heavy' ? '⚓' : '●';
+      this.sizeText = scene.add.text(0, sizeConfig.radius + 30, `${sizeLabel} ${weightLabel}`, {
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        fill: '#ffff00',
+        stroke: '#000000',
+        strokeThickness: 2,
+      });
+      this.sizeText.setOrigin(0.5);
+      this.container.add(this.sizeText);
+    }
 
     // Enable physics (for collision detection)
     scene.physics.add.existing(this.container);
@@ -70,8 +86,22 @@ export default class MineObject {
     // Store reference for collision
     this.container.setData('mineObject', this);
 
+    // Marked indicator (initially hidden)
+    this.markedIndicator = scene.add.text(0, -sizeConfig.radius - 20, '⭐', {
+      fontSize: '24px',
+    });
+    this.markedIndicator.setOrigin(0.5);
+    this.markedIndicator.setVisible(false);
+    this.container.add(this.markedIndicator);
+
     if (this.taken) {
       this.container.setVisible(false);
+    }
+  }
+
+  setMarked(marked) {
+    if (this.markedIndicator) {
+      this.markedIndicator.setVisible(marked);
     }
   }
 

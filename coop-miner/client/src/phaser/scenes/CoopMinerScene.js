@@ -17,6 +17,7 @@ export default class CoopMinerScene extends Phaser.Scene {
     this.gameState = data.gameState || null;
     this.onObjectCollected = data.onObjectCollected || null;
     this.onHookStateUpdate = data.onHookStateUpdate || null;
+    this.onMarkTarget = data.onMarkTarget || null;
     this.lastHookSync = 0;
   }
 
@@ -50,6 +51,11 @@ export default class CoopMinerScene extends Phaser.Scene {
 
     // UI Text for controls
     this.createUI();
+
+    // Setup click handler for player B to mark targets
+    if (this.myRole === 'B') {
+      this.input.on('pointerdown', this.handleClick, this);
+    }
   }
 
   setupControls() {
@@ -113,8 +119,8 @@ export default class CoopMinerScene extends Phaser.Scene {
     const controlsY = 570;
 
     if (this.myRole === 'A') {
-      this.controlText = this.add.text(400, controlsY, '[Role A - Hook] ← → Angle  |  SPACE Launch', {
-        fontSize: '16px',
+      this.controlText = this.add.text(400, controlsY, '[Role A] You see ICONS  |  ← → Angle  |  SPACE Launch', {
+        fontSize: '15px',
         fontFamily: 'monospace',
         fill: '#ffffff',
         stroke: '#000000',
@@ -122,8 +128,8 @@ export default class CoopMinerScene extends Phaser.Scene {
       });
       this.controlText.setOrigin(0.5);
     } else if (this.myRole === 'B') {
-      this.controlText = this.add.text(400, controlsY, '[Role B - Boost] SHIFT/↓ Accelerate Hook', {
-        fontSize: '16px',
+      this.controlText = this.add.text(400, controlsY, '[Role B] You see VALUES  |  SHIFT/↓ Boost  |  CLICK Mark Target (+5)', {
+        fontSize: '14px',
         fontFamily: 'monospace',
         fill: '#ffff00',
         stroke: '#000000',
@@ -152,10 +158,26 @@ export default class CoopMinerScene extends Phaser.Scene {
     // Create new objects
     objectsData.forEach(objData => {
       if (!objData.taken) {
-        const mineObj = new MineObject(this, objData);
+        const mineObj = new MineObject(this, objData, this.myRole);
         this.mineObjects.push(mineObj);
       }
     });
+  }
+
+  handleClick(pointer) {
+    if (this.myRole !== 'B') return;
+
+    const clickX = pointer.x;
+    const clickY = pointer.y;
+
+    for (let obj of this.mineObjects) {
+      if (!obj.taken && obj.checkCollision(clickX, clickY)) {
+        if (this.onMarkTarget) {
+          this.onMarkTarget(obj.id);
+        }
+        break;
+      }
+    }
   }
 
   update(time, delta) {
@@ -202,6 +224,15 @@ export default class CoopMinerScene extends Phaser.Scene {
 
     if (newState && newState.objects) {
       this.createMineObjects(newState.objects);
+    }
+
+    // Update marked target indicator
+    if (newState && newState.pendingTargetId) {
+      this.mineObjects.forEach(obj => {
+        obj.setMarked(obj.id === newState.pendingTargetId);
+      });
+    } else {
+      this.mineObjects.forEach(obj => obj.setMarked(false));
     }
 
     // Sync hook state from server (for player B to see A's actions)

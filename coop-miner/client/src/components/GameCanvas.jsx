@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import config from '../phaser/config';
 
-const GameCanvas = ({ myRole, gameState, onObjectCollected, onHookStateUpdate }) => {
+const GameCanvas = ({ myRole, gameState, onObjectCollected, onHookStateUpdate, onMarkTarget }) => {
   const gameRef = useRef(null);
   const sceneRef = useRef(null);
 
@@ -19,6 +19,7 @@ const GameCanvas = ({ myRole, gameState, onObjectCollected, onHookStateUpdate })
             gameState,
             onObjectCollected,
             onHookStateUpdate,
+            onMarkTarget,
           });
         }
       });

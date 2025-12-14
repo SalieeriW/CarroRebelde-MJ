@@ -145,6 +145,21 @@ function cancelNextLevel(room: RoomRecord) {
   }
 }
 
+function clearTimers(room: RoomRecord) {
+  if (room.countdownTimer) {
+    clearTimeout(room.countdownTimer);
+    room.countdownTimer = null;
+  }
+  if (room.checkTimer) {
+    clearTimeout(room.checkTimer);
+    room.checkTimer = null;
+  }
+  if (room.nextLevelTimer) {
+    clearTimeout(room.nextLevelTimer);
+    room.nextLevelTimer = null;
+  }
+}
+
 function resetConfirmations(state: RoomState) {
   state.playerA.confirmedAt = 0;
   state.playerB.confirmedAt = 0;
@@ -210,7 +225,8 @@ app.post('/rooms/:code/release', (req: Request, res: Response) => {
   const clientId = ensureClientId(req, res);
   if (!clientId) return;
   const role = (req.body?.role || '').toUpperCase();
-  const room = getRoom(req.params.code);
+  const roomCode = (req.params.code || DEFAULT_ROOM_CODE).toUpperCase();
+  const room = getRoom(roomCode);
   const rolesLeft: ('A' | 'B')[] = [];
 
   if (role === 'A' || role === 'B') {
@@ -237,6 +253,14 @@ app.post('/rooms/:code/release', (req: Request, res: Response) => {
   room.state.playersConnected = countPlayers(room.state);
   cancelCountdown(room);
   cancelNextLevel(room);
+
+  // If everyone left, fully reset the room so a new activation starts clean
+  if (room.state.playersConnected === 0) {
+    clearTimers(room);
+    rooms.set(roomCode, createRoom(roomCode));
+    res.json(getRoom(roomCode).state);
+    return;
+  }
 
   if (rolesLeft.length > 0) {
     const label = rolesLeft.length === 2 ? 'Los jugadores A y B' : `El jugador ${rolesLeft[0]}`;
@@ -409,6 +433,16 @@ app.post('/rooms/:code/exit-cancel', (req: Request, res: Response) => {
   room.state.exitRequests[role] = false;
   pushSystemMessage(room.state, `El jugador ${role} decidió seguir jugando.`);
   res.json(room.state);
+});
+
+app.post('/rooms/:code/reset', (req: Request, res: Response) => {
+  const roomCode = (req.params.code || DEFAULT_ROOM_CODE).toUpperCase();
+  const existing = rooms.get(roomCode);
+  if (existing) {
+    clearTimers(existing);
+  }
+  rooms.set(roomCode, createRoom(roomCode));
+  res.json(getRoom(roomCode).state);
 });
 
 // ============ Game Logic ============

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 const TeamChat = ({ messages, onSendMessage, myRole }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -11,6 +12,12 @@ const TeamChat = ({ messages, onSendMessage, myRole }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (inputRef.current && document.activeElement === inputRef.current) {
+      inputRef.current.blur();
+    }
+  }, []);
 
   const handleSend = () => {
     if (input.trim()) {
@@ -54,6 +61,7 @@ const TeamChat = ({ messages, onSendMessage, myRole }) => {
       {/* Input */}
       <div className="chat-input-group">
         <input
+          ref={inputRef}
           className="pixel-input small"
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -64,6 +72,7 @@ const TeamChat = ({ messages, onSendMessage, myRole }) => {
           }}
           placeholder="Escribe un mensaje..."
           maxLength={100}
+          autoFocus={false}
         />
         <button className="pixel-button small" onClick={handleSend}>
           Enviar
