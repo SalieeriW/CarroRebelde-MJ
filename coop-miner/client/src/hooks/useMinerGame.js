@@ -1,0 +1,102 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+const buildApi = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    return `http://${window.location.hostname}:7001`;
+  }
+  return 'http://localhost:7001';
+};
+
+const DEFAULT_ROOM = (import.meta.env.VITE_ROOM_CODE || 'ROOM1').toUpperCase();
+
+const useMinerGame = () => {
+  const apiBase = useMemo(buildApi, []);
+  const clientIdRef = useRef(null);
+  const pollRef = useRef(null);
+
+  const [state, setState] = useState(null);
+  const [error, setError] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [myRole, setMyRole] = useState(null);
+
+  const clientId = useMemo(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('miner-client-id') : null;
+    const id = stored || crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+    if (typeof window !== 'undefined') localStorage.setItem('miner-client-id', id);
+    clientIdRef.current = id;
+    return id;
+  }, []);
+
+  const fetchState = async () => {
+    try {
+      const res = await fetch(`${apiBase}/rooms/${DEFAULT_ROOM}`);
+      if (!res.ok) throw new Error(`Estado ${res.status}`);
+      const data = await res.json();
+      setState(data);
+      setConnected(true);
+      setError(null);
+      if (data.playerA?.sessionId === clientId) setMyRole('A');
+      else if (data.playerB?.sessionId === clientId) setMyRole('B');
+      else setMyRole(null);
+    } catch (e) {
+      setError(e);
+      setConnected(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchState();
+    pollRef.current = setInterval(fetchState, 1000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase]);
+
+  const post = async (path, body = {}) => {
+    const res = await fetch(`${apiBase}/rooms/${DEFAULT_ROOM}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, clientId }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `Error ${res.status}`);
+    }
+    const data = await res.json();
+    setState(data);
+    if (data.playerA?.sessionId === clientId) setMyRole('A');
+    else if (data.playerB?.sessionId === clientId) setMyRole('B');
+    else setMyRole(null);
+    setConnected(true);
+    setError(null);
+    return data;
+  };
+
+  const claimRole = (role) => post('/claim', { role });
+  const releaseRole = () => post('/release');
+  const setReady = (ready = true) => post('/ready', { ready });
+  const start = () => post('/start');
+  const markTarget = (targetId) => post('/action/target', { targetId });
+  const hook = (targetId) => post('/action/hook', { targetId });
+  const sendChat = (text) => post('/action/chat', { text });
+  const reset = () => post('/reset');
+
+  return {
+    state,
+    error,
+    connected,
+    myRole,
+    claimRole,
+    releaseRole,
+    setReady,
+    start,
+    markTarget,
+    hook,
+    sendChat,
+    reset,
+  };
+};
+
+export default useMinerGame;
