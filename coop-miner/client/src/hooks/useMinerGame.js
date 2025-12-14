@@ -10,10 +10,25 @@ const buildApi = () => {
 
 const DEFAULT_ROOM = (import.meta.env.VITE_ROOM_CODE || 'ROOM1').toUpperCase();
 
+const getRoomCodeFromURL = () => {
+  if (typeof window === 'undefined') return DEFAULT_ROOM;
+  const urlParams = new URLSearchParams(window.location.search);
+  return (urlParams.get('room') || DEFAULT_ROOM).toUpperCase();
+};
+
+const getPreferredRoleFromURL = () => {
+  if (typeof window === 'undefined') return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const role = urlParams.get('role');
+  return role ? role.toUpperCase() : null;
+};
+
 const useMinerGame = () => {
   const apiBase = useMemo(buildApi, []);
   const clientIdRef = useRef(null);
   const pollRef = useRef(null);
+  const roomCode = useMemo(getRoomCodeFromURL, []);
+  const preferredRole = useMemo(getPreferredRoleFromURL, []);
 
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
@@ -30,7 +45,7 @@ const useMinerGame = () => {
 
   const fetchState = async () => {
     try {
-      const res = await fetch(`${apiBase}/rooms/${DEFAULT_ROOM}`);
+      const res = await fetch(`${apiBase}/rooms/${roomCode}`);
       if (!res.ok) throw new Error(`Estado ${res.status}`);
       const data = await res.json();
       setState(data);
@@ -55,7 +70,7 @@ const useMinerGame = () => {
   }, [apiBase]);
 
   const post = async (path, body = {}) => {
-    const res = await fetch(`${apiBase}/rooms/${DEFAULT_ROOM}${path}`, {
+    const res = await fetch(`${apiBase}/rooms/${roomCode}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, clientId }),
@@ -74,6 +89,24 @@ const useMinerGame = () => {
     return data;
   };
 
+  const reportResult = async (won = false) => {
+    const host = window.location.hostname || 'localhost';
+    const url = `http://${host}:2567/minigame/result`;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ won }),
+      });
+    } catch (e) {
+      console.warn('Failed to send minigame result', e);
+    }
+  };
+
+  const leaveRoom = () => {
+    releaseRole().catch(() => {});
+  };
+
   const claimRole = (role) => post('/claim', { role });
   const releaseRole = () => post('/release');
   const setReady = (ready = true) => post('/ready', { ready });
@@ -82,12 +115,15 @@ const useMinerGame = () => {
   const hook = (targetId) => post('/action/hook', { targetId });
   const sendChat = (text) => post('/action/chat', { text });
   const reset = () => post('/reset');
+  const updateHookState = (hookState) => post('/action/hook-update', hookState);
 
   return {
     state,
     error,
     connected,
     myRole,
+    roomCode,
+    preferredRole,
     claimRole,
     releaseRole,
     setReady,
@@ -96,6 +132,9 @@ const useMinerGame = () => {
     hook,
     sendChat,
     reset,
+    updateHookState,
+    reportResult,
+    leaveRoom,
   };
 };
 

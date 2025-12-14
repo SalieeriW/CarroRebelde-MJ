@@ -1,20 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import levelsData from '../../shared/minerLevels.json';
 import useMinerGame from './hooks/useMinerGame';
-
-const prettyWeight = {
-  light: 'Ligero',
-  medium: 'Medio',
-  heavy: 'Pesado',
-  very_heavy: 'Muy pesado',
-};
-
-const prettySpecial = {
-  slow: 'Ralentiza',
-  speed_buff: 'Acelera',
-  combo: 'Combo +5',
-  next_bonus: 'Siguiente +5',
-};
+import GameCanvas from './components/GameCanvas';
+import PixelDialog from './components/PixelDialog';
+import SuccessScreen from './components/SuccessScreen';
 
 const phaseCopy = {
   lobby: 'Sala',
@@ -26,11 +15,11 @@ const phaseCopy = {
 
 const App = () => {
   const game = useMinerGame();
-  const [selected, setSelected] = useState(null);
-  const [chatText, setChatText] = useState('');
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [voiceConnected, setVoiceConnected] = useState(false);
+  const [showDialog, setShowDialog] = useState(null);
+  const exitingRef = useRef(false);
 
-  const isA = game.myRole === 'A';
-  const isB = game.myRole === 'B';
   const phase = game.state?.phase || 'lobby';
 
   const levelMeta = useMemo(() => {
@@ -38,36 +27,48 @@ const App = () => {
     return levelsData.levels.find((lvl) => lvl.id === game.state.levelId) || null;
   }, [game.state]);
 
-  const availableObjects = useMemo(() => {
-    if (!game.state) return [];
-    const objs = (game.state.objects || []).slice();
-    for (let i = objs.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [objs[i], objs[j]] = [objs[j], objs[i]];
-    }
-    return objs;
-  }, [game.state?.objects]);
-
   const status = game.state ? `${game.state.score}/${game.state.goalScore} pts` : '...';
   const levelInfo = game.state ? `Nivel ${game.state.levelId}/${game.state.totalLevels || 3}` : '';
   const turnsLeft = game.state?.turnsLeft ?? 0;
 
-  const handleHook = (id) => {
-    if (!isA) return;
-    game.hook(id).catch(console.error);
+  const handleObjectCollected = (obj) => {
+    game.hook(obj.id).catch(console.error);
   };
 
-  const handleMark = (id) => {
-    if (!isB) return;
-    setSelected(id);
-    game.markTarget(id).catch(console.error);
+  const handleExitToMainboard = async (won = false) => {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    await game.reportResult?.(won);
+    window.location.href = '/';
   };
 
-  const sendChat = () => {
-    if (!chatText.trim()) return;
-    game.sendChat(chatText.trim()).catch(console.error);
-    setChatText('');
+  const handleExitConfirm = () => {
+    setShowDialog({
+      type: 'confirm',
+      title: 'Salir del Minijuego',
+      message: '¿Quieres salir? Puedes volver cuando quieras.',
+      confirmText: 'Salir',
+      cancelText: 'Quedarme',
+      onConfirm: () => {
+        setShowDialog(null);
+        handleExitToMainboard(false);
+      },
+      onCancel: () => setShowDialog(null),
+    });
   };
+
+  // Auto-advance to next level after success
+  useEffect(() => {
+    if (phase === 'success' && game.state) {
+      const isFinal = game.state.levelId >= (game.state.totalLevels || 3);
+      if (!isFinal) {
+        const timer = setTimeout(() => {
+          game.start().catch(console.error);
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [phase, game.state?.levelId]);
 
   const seatStatus = (role) => {
     const player = role === 'A' ? game.state?.playerA : game.state?.playerB;
@@ -88,15 +89,15 @@ const App = () => {
         <div className="pixel-bg" />
         <div className="lobby-container">
           <div className="lobby-title">Golden Miner · Co-op</div>
-          <div className="lobby-subtitle">Dos roles, un gancho. Coordinen para llegar a la meta.</div>
+          <div className="lobby-subtitle">Dos roles, un gancho. Coordinen con voz para llegar a la meta.</div>
 
           <div className="lobby-section">
             <div className="section-header">Descripción del reto</div>
-            <p>Recolecten {game.state?.goalScore || 0} puntos en equipo sin perder turnos. A dispara el gancho; B marca prioridades y lee la tabla de valores.</p>
+            <p>Recolecten {game.state?.goalScore || 0} puntos en equipo. A controla el ángulo, B dispara y acelera.</p>
             <p className="hint">
-              {levelInfo} · Objetivo: {status} · Turnos previstos: {levelMeta?.turns || '—'}
+              {levelInfo} · Objetivo: {status} · Turnos: {levelMeta?.turns || '—'}
             </p>
-            {levelMeta?.hints?.generic && <p className="hint">{levelMeta.hints.generic}</p>}
+            <p className="hint">💡 Usen comunicación de voz para coordinar!</p>
           </div>
 
           <div className="lobby-section">
@@ -104,8 +105,8 @@ const App = () => {
             <div className="roles-grid">
               <div className={`player-item ${aStatus.ready ? 'ready' : ''}`}>
                 <div>
-                  <div className="seat-title">Jugador A · Operador</div>
-                  <div className="seat-desc">Controla el gancho y ejecuta la captura.</div>
+                  <div className="seat-title">Jugador A · Operador del Gancho</div>
+                  <div className="seat-desc">Controla el ángulo (← →) y dispara (ESPACIO).</div>
                   <div className="seat-status">Estado: {aStatus.label} · Listo: {aStatus.ready ? 'Sí' : 'No'}</div>
                 </div>
                 <div className="seat-actions">
@@ -116,8 +117,8 @@ const App = () => {
 
               <div className={`player-item ${bStatus.ready ? 'ready' : ''}`}>
                 <div>
-                  <div className="seat-title">Jugador B · Guía</div>
-                  <div className="seat-desc">Ve valores y efectos, marca la prioridad.</div>
+                  <div className="seat-title">Jugador B · Acelerador</div>
+                  <div className="seat-desc">Acelera el gancho (SHIFT/↓) para alcanzar más lejos.</div>
                   <div className="seat-status">Estado: {bStatus.label} · Listo: {bStatus.ready ? 'Sí' : 'No'}</div>
                 </div>
                 <div className="seat-actions">
@@ -126,7 +127,6 @@ const App = () => {
                 </div>
               </div>
             </div>
-            <p className="hint">Ambos deben estar sentados y listos antes de empezar.</p>
           </div>
 
           <div className="lobby-section">
@@ -146,7 +146,6 @@ const App = () => {
               >
                 Empezar nivel
               </button>
-              <button className="pixel-button small" onClick={game.reset}>Reset sala</button>
             </div>
           </div>
         </div>
@@ -154,127 +153,81 @@ const App = () => {
     );
   };
 
-  const renderStatusBanner = () => {
-    if (phase === 'success') {
-      const final = game.state?.levelId === game.state?.totalLevels;
-      return (
-        <div className="status-banner success">
-          {final ? 'Sesión completada, reinicia cuando quieras.' : 'Nivel superado, preparando el siguiente...'}
-        </div>
-      );
-    }
-    if (phase === 'summary') {
-      return (
-        <div className="status-banner warn">
-          Turnos agotados. Pulsa “Reintentar” para seguir en el mismo nivel.
-        </div>
-      );
-    }
-    return null;
-  };
-
   const renderGame = () => (
-    <div className="level-view">
-      <div className="pixel-bg" />
-      <div className="level-top-bar">
-        <div>
+    <div className="game-view">
+      <div className="game-top-bar">
+        <div className="game-info">
           <div className="level-title">Golden Miner · {levelMeta?.name || 'Nivel'}</div>
-          <div className="meta-line">{levelInfo} · Objetivo {game.state?.goalScore || 0} pts</div>
+          <div className="meta-line">{levelInfo} · Meta: {game.state?.goalScore || 0} pts</div>
         </div>
-        <div className="top-actions">
+
+        <div className="game-stats">
           <span className="pill">Puntos: {game.state?.score ?? 0}</span>
           <span className="pill">Turnos: {turnsLeft}</span>
           <span className="pill">Fase: {phaseCopy[phase]}</span>
-          <button className="pixel-button small" onClick={() => game.claimRole('A')}>Tomar A</button>
-          <button className="pixel-button small" onClick={() => game.claimRole('B')}>Tomar B</button>
-          <button className="pixel-button small" onClick={game.releaseRole}>Liberar</button>
-          <button className="pixel-button small" onClick={() => game.setReady(true)} disabled={!game.myRole}>Listo</button>
-          <button className="pixel-button small" onClick={game.start}>Reintentar</button>
-          <button className="pixel-button small" onClick={game.reset}>Reset sala</button>
+        </div>
+
+        <div className="voice-controls">
+          <button
+            className={`voice-btn ${voiceConnected ? 'connected' : ''}`}
+            onClick={() => setVoiceConnected(!voiceConnected)}
+          >
+            {voiceConnected ? '🎤 Conectado' : '🔇 Desconectado'}
+          </button>
+          <button
+            className="voice-btn small"
+            onClick={() => setVoiceMuted(!voiceMuted)}
+            disabled={!voiceConnected}
+          >
+            {voiceMuted ? '🔇' : '🎤'}
+          </button>
+          <button className="pixel-button small" onClick={handleExitConfirm}>
+            Volver
+          </button>
         </div>
       </div>
 
-      {renderStatusBanner()}
+      <div className="phaser-container-wrapper">
+        <GameCanvas
+          myRole={game.myRole}
+          gameState={game.state}
+          onObjectCollected={handleObjectCollected}
+          onHookStateUpdate={game.updateHookState}
+        />
+      </div>
 
-      <div className="level-container">
-        <div className="panel">
-          <div className="section-header">Operador A · Objetos visibles</div>
-          <p className="hint">A dispara el gancho. B marca prioridades, pero A decide si no hay marca.</p>
-          <div className="objects-grid">
-            {availableObjects.map((obj) => (
-              <div
-                key={obj.id}
-                className={`object ${obj.taken ? 'taken' : ''} ${selected === obj.id ? 'selected' : ''}`}
-                onClick={() => {
-                  if (isA) handleHook(obj.id);
-                  if (isB) handleMark(obj.id);
-                  setSelected(obj.id);
-                }}
-              >
-                <div className="object-icon">{obj.icon}</div>
-                <div className="object-meta">{obj.size} · {obj.weight}</div>
-                {obj.id === selected && <div className="badge">Selección</div>}
-                {obj.taken && <div className="badge">Tomado</div>}
-              </div>
-            ))}
-          </div>
-          <div className="action-row">
-            {isA && <button className="pixel-button" onClick={() => handleHook(selected)} disabled={!selected}>Disparar gancho</button>}
-            {isB && <button className="pixel-button" onClick={() => handleMark(selected)} disabled={!selected}>Marcar objetivo</button>}
-          </div>
-          {game.state?.lastHit && (
-            <div className="hint">Último: {game.state.lastHit.type} (+{game.state.lastHit.value}) → {game.state.lastHit.scoreAfter} pts</div>
+      <div className="game-bottom-bar">
+        <div className="role-info">
+          {game.myRole === 'A' && (
+            <span className="role-label">Tu rol: Operador del Gancho (A) - Controlas ángulo y disparo</span>
+          )}
+          {game.myRole === 'B' && (
+            <span className="role-label">Tu rol: Acelerador (B) - Aceleras el gancho</span>
           )}
         </div>
-
-        <div className="panel">
-          <div className="section-header">Guía B · Valores y efectos</div>
-          <ul className="ref-list">
-            {(game.state?.objects || []).map((obj) => (
-              <li key={`ref-${obj.id}`}>
-                <span className="pill small">{obj.icon}</span>
-                <span>{prettyWeight[obj.weight] || obj.weight}</span>
-                <span className="pill small value">+{obj.value} pts</span>
-                {obj.special && <span className="pill small special">{prettySpecial[obj.special] || obj.special}</span>}
-              </li>
-            ))}
-          </ul>
-
-          <div className="section-header">Chat rápido</div>
-          <div className="chat">
-            {(game.state?.chatMessages || []).map((msg, idx) => (
-              <div key={idx} className="chat-line">
-                <strong>{msg.role}:</strong> {msg.text}
-              </div>
-            ))}
-          </div>
-          <div className="chat-row">
-            <input
-              className="pixel-input"
-              value={chatText}
-              onChange={(e) => setChatText(e.target.value)}
-              placeholder="Mensaje corto…"
-            />
-            <button className="pixel-button small" onClick={sendChat}>Enviar</button>
-          </div>
-        </div>
       </div>
+
+      {game.state?.lastHit && (
+        <div className="last-hit-banner">
+          Capturado: {game.state.lastHit.type} ({game.state.lastHit.value > 0 ? '+' : ''}{game.state.lastHit.value} pts) → Total: {game.state.lastHit.scoreAfter} pts
+        </div>
+      )}
     </div>
   );
 
-  const renderCompleted = (final = false) => (
-    <div className="pixel-lobby">
-      <div className="pixel-bg" />
-      <div className="lobby-container">
-        <div className="lobby-title">{final ? 'Sesión terminada' : 'Nivel superado'}</div>
-        <p className="hint">Marcador: {status}</p>
-        <div className="action-row">
-          <button className="pixel-button" onClick={game.reset}>Reiniciar desde nivel 1</button>
-          {!final && <button className="pixel-button" onClick={game.start}>Repetir nivel</button>}
-        </div>
-      </div>
-    </div>
-  );
+  const renderSuccess = () => {
+    const isFinal = game.state?.levelId >= (game.state?.totalLevels || 3);
+    return (
+      <SuccessScreen
+        levelId={game.state?.levelId || 1}
+        totalLevels={game.state?.totalLevels || 3}
+        score={game.state?.score || 0}
+        goalScore={game.state?.goalScore || 0}
+        onContinue={!isFinal ? () => game.start() : null}
+        onExit={isFinal ? () => handleExitToMainboard(true) : null}
+      />
+    );
+  };
 
   const renderSummary = () => (
     <div className="pixel-lobby">
@@ -283,25 +236,42 @@ const App = () => {
         <div className="lobby-title">Intento terminado</div>
         <p className="hint">Puntuación: {status} · Turnos agotados.</p>
         <div className="action-row">
-          <button className="pixel-button" onClick={game.start}>Reintentar nivel</button>
-          <button className="pixel-button" onClick={game.reset}>Reset sala</button>
+          <button className="pixel-button" onClick={handleExitConfirm}>Volver</button>
         </div>
       </div>
     </div>
   );
 
-  const finalLevel = game.state?.levelId === game.state?.totalLevels && phase === 'success';
+  const renderPhase = () => {
+    switch (phase) {
+      case 'lobby':
+      case 'briefing':
+        return renderLobby();
+      case 'active':
+        return renderGame();
+      case 'success':
+        return renderSuccess();
+      case 'summary':
+        return renderSummary();
+      default:
+        return renderLobby();
+    }
+  };
 
   return (
     <div className="twokeys-container">
-      {phase === 'lobby' || phase === 'briefing' ? renderLobby()
-        : phase === 'success' && finalLevel
-          ? renderCompleted(true)
-          : phase === 'summary'
-            ? renderSummary()
-            : phase === 'success'
-              ? renderCompleted(false)
-              : renderGame()}
+      {showDialog && (
+        <PixelDialog
+          type={showDialog.type}
+          title={showDialog.title}
+          message={showDialog.message}
+          onConfirm={showDialog.onConfirm}
+          onCancel={showDialog.onCancel}
+          confirmText={showDialog.confirmText}
+          cancelText={showDialog.cancelText}
+        />
+      )}
+      {renderPhase()}
 
       {game.error && (
         <div className="status-banner warn">

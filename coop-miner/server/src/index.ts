@@ -31,6 +31,15 @@ interface ObjectState {
   taken: boolean;
 }
 
+interface HookState {
+  state: 'idle' | 'swinging' | 'descending' | 'retracting';
+  angle: number;
+  x: number;
+  y: number;
+  boosted: boolean;
+  attachedObjectId: string | null;
+}
+
 interface RoomState {
   sessionCode: string;
   levelId: number;
@@ -44,6 +53,7 @@ interface RoomState {
   objects: ObjectState[];
   pendingTargetId: string | null;
   chatMessages: ChatMessage[];
+  hookState: HookState;
   lastHit?: {
     objectId: string;
     type: string;
@@ -128,6 +138,14 @@ function createRoom(code: string): RoomRecord {
     objects: generateObjects(levelId),
     pendingTargetId: null,
     chatMessages: [],
+    hookState: {
+      state: 'idle',
+      angle: 0,
+      x: 400,
+      y: 120,
+      boosted: false,
+      attachedObjectId: null,
+    },
     lastHit: null,
   };
   return { state, advanceTimer: null };
@@ -170,7 +188,7 @@ function resetForLevel(room: RoomRecord, nextLevelId: number) {
   room.state.goalScore = level.goalScore;
   room.state.score = 0;
   room.state.turnsLeft = (level as any).turns || 20;
-  room.state.phase = 'briefing';
+  room.state.phase = 'active';
   room.state.objects = generateObjects(nextLevelId);
   room.state.pendingTargetId = null;
   room.state.playerA.isReady = false;
@@ -184,9 +202,6 @@ function markSuccess(room: RoomRecord) {
   if (room.state.levelId < room.state.totalLevels) {
     room.advanceTimer = setTimeout(() => {
       resetForLevel(room, room.state.levelId + 1);
-      room.advanceTimer = setTimeout(() => {
-        room.state.phase = 'active';
-      }, 1000);
     }, 3000);
   }
 }
@@ -319,8 +334,8 @@ app.post('/rooms/:code/action/hook', (req, res) => {
   if (!clientId) return;
   const room = getRoom(req.params.code);
   const role = getRole(room.state, clientId);
-  if (role !== 'A') {
-    res.status(403).json({ error: 'solo A opera el gancho' });
+  if (!role) {
+    res.status(403).json({ error: 'no asignado a un rol' });
     return;
   }
   if (room.state.phase !== 'active') {
@@ -382,6 +397,24 @@ app.post('/rooms/:code/action/chat', (req, res) => {
     room.state.chatMessages.push({ role, text, timestamp: now() });
     room.state.chatMessages = room.state.chatMessages.slice(-20);
   }
+  res.json(room.state);
+});
+
+app.post('/rooms/:code/action/hook-update', (req, res) => {
+  const clientId = ensureClientId(req, res);
+  if (!clientId) return;
+  const room = getRoom(req.params.code);
+  const role = getRole(room.state, clientId);
+
+  const { state, angle, x, y, boosted, attachedObjectId } = req.body;
+
+  if (state !== undefined) room.state.hookState.state = state;
+  if (angle !== undefined) room.state.hookState.angle = angle;
+  if (x !== undefined) room.state.hookState.x = x;
+  if (y !== undefined) room.state.hookState.y = y;
+  if (boosted !== undefined) room.state.hookState.boosted = boosted;
+  if (attachedObjectId !== undefined) room.state.hookState.attachedObjectId = attachedObjectId;
+
   res.json(room.state);
 });
 
